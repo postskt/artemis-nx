@@ -623,13 +623,13 @@ int main(int argc, char** argv) {
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
                             if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 4) %
+                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 5) %
                                                  static_cast<int>(gallery_items.size());
                             }
                         } else if (action == artc::Action::Down ||
                                    action == artc::Action::SelectDown) {
                             if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + 4) %
+                                gallery_cursor = (gallery_cursor + 5) %
                                                  static_cast<int>(gallery_items.size());
                             }
                         } else if (action == artc::Action::Left) {

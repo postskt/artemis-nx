@@ -320,9 +320,10 @@ void Renderer::draw_title(const std::vector<std::string>& items, int cursor) {
     }
 
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    const int start_y = 430;
+    const int start_y = items.size() > 6 ? 360 : 430;
+    const int step_y = items.size() > 6 ? 42 : 48;
     for (std::size_t i = 0; i < items.size(); ++i) {
-        const int y = start_y + static_cast<int>(i) * 48;
+        const int y = start_y + static_cast<int>(i) * step_y;
         if (static_cast<int>(i) == cursor) {
             SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 190);
             SDL_Rect highlight{config_.logical_width() / 2 - 220, y - 7, 440, 42};
@@ -443,19 +444,19 @@ void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
     draw_outlined(select_font_, "CG鑑賞", SDL_Color{255, 255, 255, 255},
                   SDL_Color{35, 20, 30, 255}, 60, 35);
 
-    const int columns = 4;
-    const int cell_width = 230;
-    const int cell_height = 190;
-    const int origin_x = 48;
-    const int origin_y = 125;
+    const int columns = 5;
+    const int cell_width = 185;
+    const int cell_height = 145;
+    const int origin_x = 42;
+    const int origin_y = 115;
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
     for (int i = 0; i < static_cast<int>(items.size()); ++i) {
         const int column = i % columns;
         const int row = i / columns;
-        if (row >= 3) break;
-        const int x = origin_x + column * 245;
+        if (row >= 4) break;
+        const int x = origin_x + column * 195;
         const int y = origin_y + row * cell_height;
-        SDL_Rect cell{x, y, cell_width, cell_height - 16};
+        SDL_Rect cell{x, y, cell_width, cell_height - 10};
         if (i == cursor) {
             SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 200);
             SDL_RenderFillRect(renderer_, &cell);
@@ -464,15 +465,15 @@ void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
         SDL_RenderDrawRect(renderer_, &cell);
         if (items[i].unlocked) {
             if (SDL_Texture* thumb = textures_->get(path_of(assets_, items[i].thumb))) {
-                SDL_Rect dst{x + 12, y + 10, cell_width - 24, 130};
+                SDL_Rect dst{x + 8, y + 7, cell_width - 16, 102};
                 SDL_RenderCopy(renderer_, thumb, nullptr, &dst);
             }
         } else {
             draw_outlined(menu_font_, "LOCKED", SDL_Color{160, 160, 170, 255},
-                          SDL_Color{25, 20, 30, 255}, x + 65, y + 60);
+                          SDL_Color{25, 20, 30, 255}, x + 50, y + 40);
         }
         draw_outlined(menu_font_, items[i].id, SDL_Color{230, 235, 245, 255},
-                      SDL_Color{25, 20, 30, 255}, x + 12, y + 148);
+                      SDL_Color{25, 20, 30, 255}, x + 8, y + 113);
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
