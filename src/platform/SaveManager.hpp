@@ -20,7 +20,7 @@ struct SaveSlotInfo {
 
 class SaveManager {
 public:
-    static constexpr int kSlotCount = 8;
+    static constexpr int kSlotCount = 12;
 
     explicit SaveManager(std::filesystem::path directory);
 

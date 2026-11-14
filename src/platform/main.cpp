@@ -59,6 +59,8 @@ struct Options {
     std::filesystem::path games_dir;
     std::filesystem::path save_dir;
     std::string screenshot;
+    std::string ui_screenshot;
+    std::string ui_screen;
     int width = 0;
     int height = 0;
     int steps = 0;
@@ -102,6 +104,10 @@ Options parse_options(int argc, char** argv) {
             options.height = std::atoi(argv[++i]);
         } else if (arg == "--screenshot" && i + 1 < argc) {
             options.screenshot = argv[++i];
+        } else if (arg == "--ui-screenshot" && i + 1 < argc) {
+            options.ui_screenshot = argv[++i];
+        } else if (arg == "--ui-screen" && i + 1 < argc) {
+            options.ui_screen = argv[++i];
         } else if (arg == "--steps" && i + 1 < argc) {
             options.steps = std::atoi(argv[++i]);
         }
@@ -342,6 +348,7 @@ int main(int argc, char** argv) {
         int pause_cursor = 0;
         int slot_cursor = 0;
         int settings_cursor = 0;
+        int settings_page = 1;
         int gallery_cursor = 0;
         std::string cg_view_path;
         bool save_mode = false;
@@ -380,6 +387,7 @@ int main(int argc, char** argv) {
         };
         auto open_settings = [&](Screen back) {
             settings_cursor = 0;
+            settings_page = 1;
             menu_return = back;
             screen = Screen::Settings;
         };
@@ -461,12 +469,33 @@ int main(int argc, char** argv) {
                         artc::AudioCommand{artc::AudioKind::BgmStop}});
         };
 
-        if (screen == Screen::Game) {
+        bool screenshot_done = false;
+        if (!options.ui_screenshot.empty()) {
+            if (options.ui_screen == "save") {
+                refresh_slots();
+                renderer.draw_save_menu(slots, 0, true);
+            } else if (options.ui_screen == "load") {
+                refresh_slots();
+                renderer.draw_save_menu(slots, 0, false);
+            } else if (options.ui_screen == "settings") {
+                renderer.draw_settings(settings, 0, 1);
+            } else if (options.ui_screen == "gallery") {
+                renderer.draw_gallery(gallery_items, 0);
+            } else {
+                renderer.draw_title(std::vector<std::string>(6), 0);
+            }
+            if (!renderer.save_png(options.ui_screenshot)) {
+                std::cerr << "[warn] UI screenshot save failed: " << options.ui_screenshot << "\n";
+            }
+            renderer.present();
+            screenshot_done = true;
+        }
+
+        if (screen == Screen::Game && options.ui_screenshot.empty()) {
             engine.start();
             play_audio();
         }
 
-        bool screenshot_done = false;
         if (!options.screenshot.empty()) {
             for (int i = 0; i < options.steps; ++i) {
                 engine.step(artc::Action::Next);
@@ -589,6 +618,10 @@ int main(int argc, char** argv) {
                         if (action == artc::Action::Menu || action == artc::Action::Back) {
                             save_current_settings();
                             screen = menu_return;
+                        } else if (action == artc::Action::PageLeft) {
+                            settings_page = std::max(1, settings_page - 1);
+                        } else if (action == artc::Action::PageRight) {
+                            settings_page = std::min(3, settings_page + 1);
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
                             settings_cursor = (settings_cursor + 5) % 6;
@@ -623,13 +656,13 @@ int main(int argc, char** argv) {
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
                             if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 5) %
+                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 4) %
                                                  static_cast<int>(gallery_items.size());
                             }
                         } else if (action == artc::Action::Down ||
                                    action == artc::Action::SelectDown) {
                             if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + 5) %
+                                gallery_cursor = (gallery_cursor + 4) %
                                                  static_cast<int>(gallery_items.size());
                             }
                         } else if (action == artc::Action::Left) {
@@ -708,17 +741,17 @@ int main(int argc, char** argv) {
                 SDL_Delay(engine.finished() ? 16 : 8);
             } else if (screen == Screen::Title) {
                 audio.update();
-                renderer.draw_title(title_items, title_cursor);
+                renderer.draw_title(title_items, title_cursor, saves.latest_slot() != 0);
                 renderer.present();
                 SDL_Delay(16);
             } else if (screen == Screen::Pause) {
                 audio.update();
-                renderer.draw_title(pause_items, pause_cursor);
+                renderer.draw_pause_menu(pause_items, pause_cursor);
                 renderer.present();
                 SDL_Delay(16);
             } else if (screen == Screen::Settings) {
                 audio.update();
-                renderer.draw_settings(settings, settings_cursor);
+                renderer.draw_settings(settings, settings_cursor, settings_page);
                 renderer.present();
                 SDL_Delay(16);
             } else if (screen == Screen::Gallery) {

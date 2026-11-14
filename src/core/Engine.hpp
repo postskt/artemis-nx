@@ -26,6 +26,8 @@ enum class Action {
     SelectDown,
     Left,
     Right,
+    PageLeft,
+    PageRight,
     Back,
     ToggleDebug,
     Menu,

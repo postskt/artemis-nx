@@ -51,9 +51,11 @@ public:
     void draw(const GameSnapshot& snapshot);
     void present();
     bool save_png(const std::string& path);
-    void draw_title(const std::vector<std::string>& items, int cursor);
+    void draw_title(const std::vector<std::string>& items, int cursor,
+                    bool continue_enabled = true);
+    void draw_pause_menu(const std::vector<std::string>& items, int cursor);
     void draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor, bool save_mode);
-    void draw_settings(const UserSettings& settings, int cursor);
+    void draw_settings(const UserSettings& settings, int cursor, int page);
     void draw_gallery(const std::vector<GalleryItem>& items, int cursor);
     void draw_cg_view(const std::string& relative_path);
     void toggle_debug() { debug_ = !debug_; }
@@ -96,6 +98,8 @@ private:
     void draw_text(const std::string& text, TTF_Font* font, SDL_Color color,
                    SDL_Color outline, int x, int y, int wrap_width,
                    int line_height);
+    void draw_sprite(const std::string& relative, int x, int y, int w, int h,
+                     int source_y = 0);
     static std::vector<std::string> wrap_text(TTF_Font* font, const std::string& text,
                                               int width);
     static SDL_Color parse_color(const std::string& value, SDL_Color fallback);

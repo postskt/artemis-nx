@@ -22,7 +22,7 @@ std::string now_string() {
     localtime_r(&time, &local);
 #endif
     std::ostringstream output;
-    output << std::put_time(&local, "%Y-%m-%d %H:%M:%S");
+    output << std::put_time(&local, "%Y/%m/%d %H:%M");
     return output.str();
 }
 

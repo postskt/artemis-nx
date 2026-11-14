@@ -289,191 +289,204 @@ bool Renderer::save_png(const std::string& path) {
     return ok;
 }
 
-void Renderer::draw_title(const std::vector<std::string>& items, int cursor) {
-    SDL_SetRenderDrawColor(renderer_, 8, 10, 18, 255);
+void Renderer::draw_sprite(const std::string& relative, int x, int y, int w, int h,
+                           int source_y) {
+    if (relative.empty()) return;
+    std::string path = relative;
+    if (path.size() < 4 || path.substr(path.size() - 4) != ".png") path += ".png";
+    if (SDL_Texture* texture = textures_->get(path_of(assets_, path))) {
+        SDL_Rect src{0, source_y, w, h};
+        SDL_Rect dst{x, y, w, h};
+        SDL_RenderCopy(renderer_, texture, &src, &dst);
+    }
+}
+
+void Renderer::draw_title(const std::vector<std::string>& items, int cursor,
+                          bool continue_enabled) {
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
-
     const std::string base = config_.resolve_magic(":ui/");
-    if (SDL_Texture* background = textures_->get(path_of(assets_, base + "title/bg.png"))) {
-        SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
-        SDL_RenderCopy(renderer_, background, nullptr, &dst);
-    }
-    // The title UI directory also contains a trial-version Raspberry Cube logo
-    // in some Windows data sets.  Prefer the game's own CG logo.
-    SDL_Texture* logo_texture = textures_->get(
-        path_of(assets_, config_.resolve_magic(":cg/") + "logo.png"));
-    if (!logo_texture) {
-        logo_texture = textures_->get(path_of(assets_, base + "title/logo.png"));
-    }
-    if (logo_texture) {
-        int width = 0;
-        int height = 0;
-        SDL_QueryTexture(logo_texture, nullptr, nullptr, &width, &height);
-        const int max_width = config_.logical_width() * 3 / 5;
-        if (width < max_width) {
-            const double scale = static_cast<double>(max_width) / width;
-            width = max_width;
-            height = static_cast<int>(height * scale);
-        }
-        SDL_Rect dst{(config_.logical_width() - width) / 2, 70, width, height};
-        SDL_RenderCopy(renderer_, logo_texture, nullptr, &dst);
-    }
+    draw_sprite(base + "title/bg", 0, 0, 1024, 768);
 
+    struct Button {
+        const char* asset;
+        int x;
+        int y;
+        int w;
+        int h;
+    };
+    static const Button buttons[] = {
+        {"title/bt_start", 736, 329, 150, 48},
+        {"title/bt_continue", 736, 393, 207, 48},
+        {"title/bt_load", 736, 456, 137, 49},
+        {"title/bt_config", 736, 520, 168, 48},
+        {"title/bt_extra", 736, 583, 177, 48},
+        {"title/bt_exit", 687, 647, 302, 94},
+    };
+    for (int i = 0; i < 6 && i < static_cast<int>(items.size()); ++i) {
+        int source_y = i == cursor ? (i == 5 ? 94 : 48) : 0;
+        if (i == 1 && !continue_enabled) source_y = 96;
+        draw_sprite(base + buttons[i].asset, buttons[i].x, buttons[i].y,
+                    buttons[i].w, buttons[i].h, source_y);
+    }
+}
+
+void Renderer::draw_pause_menu(const std::vector<std::string>& items, int cursor) {
+    SDL_SetRenderDrawColor(renderer_, 10, 10, 16, 255);
+    SDL_RenderClear(renderer_);
+    const std::string base = config_.resolve_magic(":ui/");
+    draw_sprite(base + "title/bg", 0, 0, 1024, 768);
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    const int start_y = items.size() > 6 ? 360 : 430;
-    const int step_y = items.size() > 6 ? 42 : 48;
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
+    SDL_Rect shade{0, 0, 1024, 768};
+    SDL_RenderFillRect(renderer_, &shade);
+    SDL_SetRenderDrawColor(renderer_, 30, 32, 45, 235);
+    SDL_Rect panel{250, 120, 524, 450};
+    SDL_RenderFillRect(renderer_, &panel);
+    draw_outlined(select_font_, "PAUSE", SDL_Color{255, 255, 255, 255},
+                  SDL_Color{35, 20, 30, 255}, 430, 145);
     for (std::size_t i = 0; i < items.size(); ++i) {
-        const int y = start_y + static_cast<int>(i) * step_y;
+        const int y = 235 + static_cast<int>(i) * 52;
         if (static_cast<int>(i) == cursor) {
             SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 190);
-            SDL_Rect highlight{config_.logical_width() / 2 - 220, y - 7, 440, 42};
+            SDL_Rect highlight{330, y - 7, 364, 44};
             SDL_RenderFillRect(renderer_, &highlight);
         }
         draw_outlined(menu_font_, items[i], SDL_Color{255, 255, 255, 255},
-                      SDL_Color{35, 20, 30, 255}, config_.logical_width() / 2 - 190, y);
+                      SDL_Color{25, 20, 30, 255}, 360, y);
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
 
 void Renderer::draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor,
                               bool save_mode) {
-    SDL_SetRenderDrawColor(renderer_, 8, 10, 18, 255);
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
     const std::string base = config_.resolve_magic(":ui/");
-    if (SDL_Texture* background = textures_->get(
-            path_of(assets_, base + (save_mode ? "save/bg_save.png" : "save/bg_load.png")))) {
-        SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
-        SDL_RenderCopy(renderer_, background, nullptr, &dst);
-    }
+    draw_sprite(base + (save_mode ? "save/bg_save" : "save/bg_load"),
+                0, 0, 1024, 768);
 
-    draw_outlined(select_font_, save_mode ? "セーブ" : "ロード",
-                  SDL_Color{255, 255, 255, 255}, SDL_Color{35, 20, 30, 255}, 60, 35);
-
-    const int cell_width = 450;
-    const int cell_height = 120;
-    const int origin_x = 48;
-    const int origin_y = 115;
+    static const int xs[] = {36, 355, 674};
+    static const int ys[] = {145, 281, 417, 551};
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    for (int i = 0; i < 8 && i < static_cast<int>(slots.size()); ++i) {
-        const int column = i % 2;
-        const int row = i / 2;
-        const int x = origin_x + column * 500;
-        const int y = origin_y + row * cell_height;
-        SDL_Rect cell{x, y, cell_width, cell_height - 12};
-        if (i == cursor) {
-            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 180);
-            SDL_RenderFillRect(renderer_, &cell);
-        }
-        SDL_SetRenderDrawColor(renderer_, 70, 78, 96, 220);
-        SDL_RenderDrawRect(renderer_, &cell);
-
+    for (int i = 0; i < 12 && i < static_cast<int>(slots.size()); ++i) {
+        const int x = xs[i % 3];
+        const int y = ys[i / 3];
+        draw_sprite(base + "save/bt_slot", x, y, 316, 132, i == cursor ? 132 : 0);
         const auto& slot = slots[i];
         SDL_Rect thumb{x + 8, y + 8, 160, 90};
         if (slot.exists && !slot.thumbnail.empty()) {
             if (SDL_Texture* preview = textures_->get(slot.thumbnail)) {
                 SDL_RenderCopy(renderer_, preview, nullptr, &thumb);
             }
-        } else {
-            SDL_SetRenderDrawColor(renderer_, 35, 38, 48, 255);
-            SDL_RenderFillRect(renderer_, &thumb);
         }
         const std::string number = "SLOT " + std::to_string(slot.slot);
-        draw_outlined(menu_font_, number, SDL_Color{220, 225, 240, 255},
-                      SDL_Color{25, 20, 30, 255}, x + 180, y + 10);
+        draw_outlined(menu_font_, number, SDL_Color{110, 70, 55, 255},
+                      SDL_Color{255, 245, 235, 255}, x + 176, y + 12);
         const std::string title = slot.exists
                                       ? (slot.title.empty() ? slot.script : slot.title)
                                       : "EMPTY";
-        draw_outlined(menu_font_, title, SDL_Color{255, 255, 255, 255},
-                      SDL_Color{25, 20, 30, 255}, x + 180, y + 44);
-        draw_outlined(menu_font_, slot.saved_at, SDL_Color{190, 200, 220, 255},
-                      SDL_Color{25, 20, 30, 255}, x + 180, y + 78);
+        draw_outlined(menu_font_, title, SDL_Color{90, 60, 50, 255},
+                      SDL_Color{255, 245, 235, 255}, x + 176, y + 46);
+        draw_outlined(osd_font_, slot.saved_at, SDL_Color{125, 100, 90, 255},
+                      SDL_Color{255, 245, 235, 255}, x + 176, y + 82);
     }
+
+    // Page controls and bottom navigation use the original sheet coordinates.
+    draw_sprite(base + "save/bt_pagetop", 631, 94, 27, 30);
+    draw_sprite(base + "save/bt_pageprev", 673, 94, 20, 30);
+    draw_sprite(base + "save/bt_pagenext", 922, 94, 20, 30);
+    draw_sprite(base + "save/bt_pageend", 957, 94, 27, 30);
+    draw_sprite(base + "save/bt_save", 516, 726, 56, 34, save_mode ? 34 : 0);
+    draw_sprite(base + "save/bt_load", 625, 727, 56, 33, save_mode ? 0 : 33);
+    draw_sprite(base + "save/bt_qload", 733, 727, 100, 33);
+    draw_sprite(base + "save/bt_return", 886, 727, 79, 33);
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
 
-void Renderer::draw_settings(const UserSettings& settings, int cursor) {
-    SDL_SetRenderDrawColor(renderer_, 18, 20, 30, 255);
+void Renderer::draw_settings(const UserSettings& settings, int cursor, int page) {
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
-    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer_, 42, 46, 62, 235);
-    SDL_Rect panel{210, 130, 620, 470};
-    SDL_RenderFillRect(renderer_, &panel);
-    SDL_SetRenderDrawColor(renderer_, 110, 118, 145, 220);
-    SDL_RenderDrawRect(renderer_, &panel);
-    draw_outlined(select_font_, "設定", SDL_Color{255, 255, 255, 255},
-                  SDL_Color{35, 20, 30, 255}, 60, 35);
-
-    const std::vector<std::string> labels = {
-        "文字速度", "オート速度", "BGM音量", "SE音量", "ボイス音量", "全画面",
-    };
-    char values[6][24]{};
-    std::snprintf(values[0], sizeof(values[0]), "%.1fx", settings.text_speed);
-    std::snprintf(values[1], sizeof(values[1]), "%.1fx", settings.auto_speed);
-    std::snprintf(values[2], sizeof(values[2]), "%d%%",
-                  static_cast<int>(settings.bgm_volume * 100));
-    std::snprintf(values[3], sizeof(values[3]), "%d%%",
-                  static_cast<int>(settings.se_volume * 100));
-    std::snprintf(values[4], sizeof(values[4]), "%d%%",
-                  static_cast<int>(settings.voice_volume * 100));
-    std::snprintf(values[5], sizeof(values[5]), "%s", settings.fullscreen ? "ON" : "OFF");
-
-    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    for (int i = 0; i < 6; ++i) {
-        const int y = 190 + i * 66;
-        if (i == cursor) {
-            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 180);
-            SDL_Rect highlight{250, y - 10, 520, 52};
-            SDL_RenderFillRect(renderer_, &highlight);
-        }
-        draw_outlined(menu_font_, labels[i], SDL_Color{255, 255, 255, 255},
-                      SDL_Color{35, 20, 30, 255}, 300, y);
-        draw_outlined(menu_font_, values[i], SDL_Color{240, 220, 180, 255},
-                      SDL_Color{35, 20, 30, 255}, 620, y);
+    const std::string base = config_.resolve_magic(":ui/");
+    if (page <= 1) {
+        draw_sprite(base + "conf/bg01", 0, 0, 1024, 768);
+        draw_sprite(base + "conf/bt_system", 213, 60, 207, 47, 94);
+        draw_sprite(base + "conf/bt_sound", 421, 60, 203, 47);
+        draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47);
+        draw_sprite(base + "conf/bt_screen", 413, 137, 139, 23, settings.fullscreen ? 23 : 0);
+        draw_sprite(base + "conf/bt_window", 241, 137, 153, 23, settings.fullscreen ? 0 : 23);
+        draw_sprite(base + "conf/bt_on", 241, 207, 63, 23, 23);
+        draw_sprite(base + "conf/bt_off", 413, 207, 70, 23, 0);
+        draw_sprite(base + "conf/bt_slider", 269, 280, 248, 24);
+        draw_sprite(base + "conf/pin", 269 + static_cast<int>(settings.voice_volume * 228),
+                    280, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 375, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>((settings.text_speed / 3.0f) * 228),
+                    375, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 450, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>((settings.auto_speed / 3.0f) * 228),
+                    450, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 525, 248, 24);
+        draw_sprite(base + "conf/bt_on", 743, 371, 63, 23, 23);
+        draw_sprite(base + "conf/bt_off", 865, 371, 70, 23, 0);
+        draw_sprite(base + "conf/bt_on", 743, 446, 63, 23, 23);
+        draw_sprite(base + "conf/bt_off", 865, 446, 70, 23, 0);
+        draw_sprite(base + "conf/sample", 36, 589, 449, 106);
+    } else if (page == 2) {
+        draw_sprite(base + "conf/bg02", 0, 0, 1024, 768);
+        draw_sprite(base + "conf/bt_system", 213, 60, 207, 47);
+        draw_sprite(base + "conf/bt_sound", 421, 60, 203, 47, 94);
+        draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47);
+        draw_sprite(base + "conf/bt_slider", 196, 201, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.bgm_volume * 228), 201, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 301, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.bgm_volume * 228), 301, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 401, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.se_volume * 228), 401, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 501, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.voice_volume * 228), 501, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 196, 601, 248, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.voice_volume * 228), 601, 9, 24);
+        draw_sprite(base + "conf/bt_slider", 698, 201, 248, 24);
+        draw_sprite(base + "conf/pin", 698 + 228, 201, 9, 24);
+    } else {
+        draw_sprite(base + "conf/bg03", 0, 0, 1024, 768);
+        draw_sprite(base + "conf/bt_system", 213, 60, 207, 47);
+        draw_sprite(base + "conf/bt_sound", 421, 60, 203, 47);
+        draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47, 94);
     }
-    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+    draw_sprite(base + "conf/bt_default", 484, 726, 90, 34);
+    draw_sprite(base + "conf/bt_exit", 624, 727, 56, 33);
+    draw_sprite(base + "conf/bt_title", 733, 727, 100, 33);
+    draw_sprite(base + "conf/bt_return", 886, 727, 79, 33);
 }
 
 void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
-    SDL_SetRenderDrawColor(renderer_, 8, 10, 18, 255);
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
     const std::string base = config_.resolve_magic(":ui/");
-    if (SDL_Texture* background = textures_->get(path_of(assets_, base + "extra/bg.png"))) {
-        SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
-        SDL_RenderCopy(renderer_, background, nullptr, &dst);
-    }
-    draw_outlined(select_font_, "CG鑑賞", SDL_Color{255, 255, 255, 255},
-                  SDL_Color{35, 20, 30, 255}, 60, 35);
-
-    const int columns = 5;
-    const int cell_width = 185;
-    const int cell_height = 145;
-    const int origin_x = 42;
-    const int origin_y = 115;
+    draw_sprite(base + "extra/bg", 0, 0, 1024, 768);
+    draw_sprite(base + "extra/bt_excg", 129, 62, 200, 47, 94);
+    draw_sprite(base + "extra/bt_exscene", 330, 62, 201, 47);
+    draw_sprite(base + "extra/bt_exbgm", 532, 62, 175, 47);
+    draw_sprite(base + "extra/bt_return", 751, 71, 109, 33);
+    static const int xs[] = {30, 275, 520, 765};
+    static const int ys[] = {123, 250, 377, 504, 631};
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    for (int i = 0; i < static_cast<int>(items.size()); ++i) {
-        const int column = i % columns;
-        const int row = i / columns;
-        if (row >= 4) break;
-        const int x = origin_x + column * 195;
-        const int y = origin_y + row * cell_height;
-        SDL_Rect cell{x, y, cell_width, cell_height - 10};
-        if (i == cursor) {
-            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 200);
-            SDL_RenderFillRect(renderer_, &cell);
-        }
-        SDL_SetRenderDrawColor(renderer_, 70, 78, 96, 220);
-        SDL_RenderDrawRect(renderer_, &cell);
+    for (int i = 0; i < static_cast<int>(items.size()) && i < 20; ++i) {
+        const int x = xs[i % 4];
+        const int y = ys[i / 4];
         if (items[i].unlocked) {
             if (SDL_Texture* thumb = textures_->get(path_of(assets_, items[i].thumb))) {
-                SDL_Rect dst{x + 8, y + 7, cell_width - 16, 102};
+                SDL_Rect dst{x + 5, y + 5, 220, 109};
                 SDL_RenderCopy(renderer_, thumb, nullptr, &dst);
             }
         } else {
-            draw_outlined(menu_font_, "LOCKED", SDL_Color{160, 160, 170, 255},
-                          SDL_Color{25, 20, 30, 255}, x + 50, y + 40);
+            SDL_SetRenderDrawColor(renderer_, 205, 190, 170, 220);
+            SDL_Rect locked{x + 5, y + 5, 220, 109};
+            SDL_RenderFillRect(renderer_, &locked);
         }
-        draw_outlined(menu_font_, items[i].id, SDL_Color{230, 235, 245, 255},
-                      SDL_Color{25, 20, 30, 255}, x + 8, y + 113);
+        draw_sprite(base + "extra/bt_thumb", x, y, 230, 119, i == cursor ? 119 : 0);
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
@@ -483,12 +496,13 @@ void Renderer::draw_cg_view(const std::string& relative_path) {
     SDL_RenderClear(renderer_);
     if (!relative_path.empty()) {
         if (SDL_Texture* image = textures_->get(path_of(assets_, relative_path))) {
-            SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
+            SDL_Rect dst{0, 0, 1024, 768};
             SDL_RenderCopy(renderer_, image, nullptr, &dst);
         }
     }
+    const std::string base = config_.resolve_magic(":ui/");
+    draw_sprite(base + "extra/bt_return", 751, 71, 109, 33);
 }
-
 void Renderer::draw_background(const GameSnapshot& snapshot) {
     if (!snapshot.background.empty()) {
         const std::string path = path_of(assets_, snapshot.background);

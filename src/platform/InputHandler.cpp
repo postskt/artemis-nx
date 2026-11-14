@@ -87,6 +87,12 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                 case SDLK_RIGHT:
                     actions.push_back(Action::Right);
                     break;
+                case SDLK_q:
+                    actions.push_back(Action::PageLeft);
+                    break;
+                case SDLK_e:
+                    actions.push_back(Action::PageRight);
+                    break;
                 case SDLK_LCTRL:
                 case SDLK_RCTRL:
                     actions.push_back(Action::Skip);
@@ -131,6 +137,9 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                     break;
                 case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
                     actions.push_back(Action::Right);
+                    break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+                    actions.push_back(Action::PageLeft);
                     break;
                 case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
                     actions.push_back(Action::Skip);

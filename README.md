@@ -44,11 +44,15 @@ The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
 - 8 mixer channels: voice on channel 0, SE on 1–7, BGM intro/loop handoff via
   `Mix_HookMusicFinished`.
 - Controller/touch/keyboard input and a multi-game launcher.
-- Native title screen and save/load slots (8 slots, thumbnail previews).
+- Native title screen and save/load slots (12 slots, thumbnail previews).
+- Title/save/config/gallery layouts follow the original `list_windows.tbl`
+  coordinates and sprite-sheet frames 1:1.
 - Settings UI (text/auto speed, BGM/SE/voice volume, fullscreen) persisted as JSON.
-- CG gallery with thumbnail grid and persistent unlock state.
+- CG gallery with 4x5 thumbnail grid and persistent unlock state.
 - Text history rollback with Backspace.
 - `F5` opens the save menu, `F9` opens the load menu, `Esc` opens the in-game menu.
+- `Q` / `E` switch config pages; `--ui-screen` + `--ui-screenshot` render a
+  single menu frame for layout verification.
 - Switch build with devkitPro, NRO and NSP-staging friendly CMake targets.
 
 ## Build on Windows (MSYS2 UCRT64)
