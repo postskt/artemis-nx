@@ -1,0 +1,33 @@
+# Build outputs
+/build/
+/build-switch/
+/build-*/
+/out/
+/output/
+/staging/
+
+# Game data / keys / packages
+/data/
+/games/
+/prod.keys
+/title.keys
+/keys.dat
+*.nsp
+*.nro
+*.xci
+*.nca
+*.ncz
+*.romfs
+
+# Local tools and downloads
+/tools/bin/
+/tmp/
+*.zip
+*.7z
+
+# IDE / OS
+.vscode/
+.idea/
+*.user
+.DS_Store
+Thumbs.db
