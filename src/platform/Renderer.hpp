@@ -12,7 +12,9 @@
 #include "AssetManager.hpp"
 #include "Config.hpp"
 #include "Engine.hpp"
+#include "Gallery.hpp"
 #include "SaveManager.hpp"
+#include "Settings.hpp"
 
 namespace artc {
 
@@ -51,6 +53,9 @@ public:
     bool save_png(const std::string& path);
     void draw_title(const std::vector<std::string>& items, int cursor);
     void draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor, bool save_mode);
+    void draw_settings(const UserSettings& settings, int cursor);
+    void draw_gallery(const std::vector<GalleryItem>& items, int cursor);
+    void draw_cg_view(const std::string& relative_path);
     void toggle_debug() { debug_ = !debug_; }
     bool debug() const { return debug_; }
     TextureCache& textures() { return *textures_; }

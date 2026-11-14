@@ -30,8 +30,19 @@ AudioPlayer::~AudioPlayer() {
     if (active_ == this) active_ = nullptr;
 }
 
-void AudioPlayer::shutdown() {
-    if (!initialized_) return;
+void AudioPlayer::set_volumes(float bgm, float se, float voice) {
+    bgm_volume_ = bgm < 0.0f ? 0.0f : (bgm > 1.0f ? 1.0f : bgm);
+    se_volume_ = se < 0.0f ? 0.0f : (se > 1.0f ? 1.0f : se);
+    voice_volume_ = voice < 0.0f ? 0.0f : (voice > 1.0f ? 1.0f : voice);
+    if (!available_) return;
+    Mix_VolumeMusic(static_cast<int>(bgm_volume_ * MIX_MAX_VOLUME));
+    Mix_Volume(0, static_cast<int>(voice_volume_ * MIX_MAX_VOLUME));
+    for (int channel = 1; channel < 8; ++channel) {
+        Mix_Volume(channel, static_cast<int>(se_volume_ * MIX_MAX_VOLUME));
+    }
+}
+
+void AudioPlayer::shutdown() {    if (!initialized_) return;
     Mix_HaltChannel(-1);
     stop_music();
     Mix_HookMusicFinished(nullptr);

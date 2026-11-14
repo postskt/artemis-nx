@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <algorithm>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -20,11 +21,13 @@
 #include "AudioPlayer.hpp"
 #include "Config.hpp"
 #include "Engine.hpp"
+#include "Gallery.hpp"
 #include "GameSelector.hpp"
 #include "InputHandler.hpp"
 #include "LuaLoader.hpp"
 #include "Renderer.hpp"
 #include "SaveManager.hpp"
+#include "Settings.hpp"
 
 namespace {
 
@@ -316,8 +319,21 @@ int main(int argc, char** argv) {
         artc::AudioPlayer audio(config, assets);
         artc::InputHandler input;
         artc::SaveManager saves(options.save_dir);
+        artc::UserSettings settings =
+            artc::load_settings(options.save_dir / "settings.json");
+        artc::Gallery gallery;
+        gallery.scan(config, assets);
+        gallery.load(options.save_dir / "gallery.json");
+        std::vector<artc::GalleryItem> gallery_items;
+        auto refresh_gallery = [&] {
+            gallery_items = gallery.items();
+            for (auto& item : gallery_items) item.unlocked = gallery.is_unlocked(item);
+        };
+        refresh_gallery();
+        audio.set_volumes(settings.bgm_volume, settings.se_volume, settings.voice_volume);
+        if (settings.fullscreen) SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
-        enum class Screen { Title, Game, Save, Load, Pause };
+        enum class Screen { Title, Game, Save, Load, Pause, Settings, Gallery, CGView };
         Screen screen = (options.no_title || !options.screenshot.empty())
                             ? Screen::Game
                             : Screen::Title;
@@ -325,9 +341,54 @@ int main(int argc, char** argv) {
         int title_cursor = 0;
         int pause_cursor = 0;
         int slot_cursor = 0;
+        int settings_cursor = 0;
+        int gallery_cursor = 0;
+        std::string cg_view_path;
         bool save_mode = false;
         std::string pending_thumbnail;
         std::vector<artc::SaveSlotInfo> slots;
+        std::vector<nlohmann::json> history;
+        std::string last_event_asset;
+        bool gallery_dirty = false;
+
+        auto save_current_settings = [&] {
+            settings.text_speed = std::max(0.5f, std::min(3.0f, settings.text_speed));
+            settings.auto_speed = std::max(0.5f, std::min(3.0f, settings.auto_speed));
+            settings.bgm_volume = std::max(0.0f, std::min(1.0f, settings.bgm_volume));
+            settings.se_volume = std::max(0.0f, std::min(1.0f, settings.se_volume));
+            settings.voice_volume = std::max(0.0f, std::min(1.0f, settings.voice_volume));
+            artc::save_settings(options.save_dir / "settings.json", settings);
+            audio.set_volumes(settings.bgm_volume, settings.se_volume, settings.voice_volume);
+            SDL_SetWindowFullscreen(window, settings.fullscreen
+                                                 ? SDL_WINDOW_FULLSCREEN_DESKTOP
+                                                 : 0);
+        };
+        auto remember_state = [&] {
+            if (engine.snapshot().text.empty()) return;
+            history.push_back(engine.export_state());
+            constexpr std::size_t kHistoryLimit = 64;
+            if (history.size() > kHistoryLimit) history.erase(history.begin());
+        };
+        auto restore_history = [&] {
+            if (history.empty()) return;
+            auto state = std::move(history.back());
+            history.pop_back();
+            std::string error;
+            if (engine.import_state(state, &error)) {
+                audio.play(engine.consume_audio());
+            }
+        };
+        auto open_settings = [&](Screen back) {
+            settings_cursor = 0;
+            menu_return = back;
+            screen = Screen::Settings;
+        };
+        auto open_gallery = [&](Screen back) {
+            refresh_gallery();
+            gallery_cursor = 0;
+            menu_return = back;
+            screen = Screen::Gallery;
+        };
 
         auto refresh_slots = [&] {
             const auto list = saves.list();
@@ -339,6 +400,8 @@ int main(int argc, char** argv) {
         auto start_new_game = [&] {
             engine.start();
             play_audio();
+            history.clear();
+            last_event_asset.clear();
             screen = Screen::Game;
         };
         auto load_slot = [&](int slot) -> bool {
@@ -350,6 +413,8 @@ int main(int argc, char** argv) {
                 return false;
             }
             play_audio();
+            history.clear();
+            last_event_asset = engine.snapshot().background;
             screen = Screen::Game;
             return true;
         };
@@ -416,10 +481,10 @@ int main(int argc, char** argv) {
         }
 
         const std::vector<std::string> title_items = {
-            "はじめから", "つづきから", "ロード", "終了",
+            "はじめから", "つづきから", "ロード", "設定", "CG鑑賞", "終了",
         };
         const std::vector<std::string> pause_items = {
-            "ゲームに戻る", "セーブ", "ロード", "タイトルへ", "終了",
+            "ゲームに戻る", "セーブ", "ロード", "設定", "CG鑑賞", "タイトルへ", "終了",
         };
 
         bool running = true;
@@ -442,10 +507,10 @@ int main(int argc, char** argv) {
                             running = false;
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
-                            title_cursor = (title_cursor + 3) % 4;
+                            title_cursor = (title_cursor + 5) % 6;
                         } else if (action == artc::Action::Down ||
                                    action == artc::Action::SelectDown) {
-                            title_cursor = (title_cursor + 1) % 4;
+                            title_cursor = (title_cursor + 1) % 6;
                         } else if (action == artc::Action::Next ||
                                    action == artc::Action::Confirm) {
                             if (title_cursor == 0) {
@@ -455,6 +520,10 @@ int main(int argc, char** argv) {
                                 if (latest == 0 || !load_slot(latest)) start_new_game();
                             } else if (title_cursor == 2) {
                                 open_load_menu(Screen::Title);
+                            } else if (title_cursor == 3) {
+                                open_settings(Screen::Title);
+                            } else if (title_cursor == 4) {
+                                open_gallery(Screen::Title);
                             } else {
                                 running = false;
                             }
@@ -470,7 +539,14 @@ int main(int argc, char** argv) {
                             open_save_menu(Screen::Game);
                         } else if (action == artc::Action::QuickLoad) {
                             open_load_menu(Screen::Game);
+                        } else if (action == artc::Action::Back) {
+                            restore_history();
                         } else {
+                            if (action == artc::Action::Next ||
+                                action == artc::Action::Confirm ||
+                                action == artc::Action::Skip) {
+                                remember_state();
+                            }
                             engine.step(action);
                             play_audio();
                         }
@@ -482,10 +558,10 @@ int main(int argc, char** argv) {
                             screen = Screen::Game;
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
-                            pause_cursor = (pause_cursor + 4) % 5;
+                            pause_cursor = (pause_cursor + 6) % 7;
                         } else if (action == artc::Action::Down ||
                                    action == artc::Action::SelectDown) {
-                            pause_cursor = (pause_cursor + 1) % 5;
+                            pause_cursor = (pause_cursor + 1) % 7;
                         } else if (action == artc::Action::Next ||
                                    action == artc::Action::Confirm) {
                             if (pause_cursor == 0) {
@@ -495,6 +571,10 @@ int main(int argc, char** argv) {
                             } else if (pause_cursor == 2) {
                                 open_load_menu(Screen::Pause);
                             } else if (pause_cursor == 3) {
+                                open_settings(Screen::Pause);
+                            } else if (pause_cursor == 4) {
+                                open_gallery(Screen::Pause);
+                            } else if (pause_cursor == 5) {
                                 stop_game_audio();
                                 screen = Screen::Title;
                                 title_cursor = 0;
@@ -505,8 +585,83 @@ int main(int argc, char** argv) {
                         continue;
                     }
 
+                    if (screen == Screen::Settings) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back) {
+                            save_current_settings();
+                            screen = menu_return;
+                        } else if (action == artc::Action::Up ||
+                                   action == artc::Action::SelectUp) {
+                            settings_cursor = (settings_cursor + 5) % 6;
+                        } else if (action == artc::Action::Down ||
+                                   action == artc::Action::SelectDown) {
+                            settings_cursor = (settings_cursor + 1) % 6;
+                        } else if (action == artc::Action::Left ||
+                                   action == artc::Action::Right) {
+                            const float direction =
+                                action == artc::Action::Left ? -1.0f : 1.0f;
+                            if (settings_cursor == 0) {
+                                settings.text_speed += direction * 0.1f;
+                            } else if (settings_cursor == 1) {
+                                settings.auto_speed += direction * 0.1f;
+                            } else if (settings_cursor == 2) {
+                                settings.bgm_volume += direction * 0.05f;
+                            } else if (settings_cursor == 3) {
+                                settings.se_volume += direction * 0.05f;
+                            } else if (settings_cursor == 4) {
+                                settings.voice_volume += direction * 0.05f;
+                            } else {
+                                settings.fullscreen = !settings.fullscreen;
+                            }
+                            save_current_settings();
+                        }
+                        continue;
+                    }
+
+                    if (screen == Screen::Gallery) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back) {
+                            screen = menu_return;
+                        } else if (action == artc::Action::Up ||
+                                   action == artc::Action::SelectUp) {
+                            if (!gallery_items.empty()) {
+                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 4) %
+                                                 static_cast<int>(gallery_items.size());
+                            }
+                        } else if (action == artc::Action::Down ||
+                                   action == artc::Action::SelectDown) {
+                            if (!gallery_items.empty()) {
+                                gallery_cursor = (gallery_cursor + 4) %
+                                                 static_cast<int>(gallery_items.size());
+                            }
+                        } else if (action == artc::Action::Left) {
+                            if (!gallery_items.empty()) {
+                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 1) %
+                                                 static_cast<int>(gallery_items.size());
+                            }
+                        } else if (action == artc::Action::Right) {
+                            if (!gallery_items.empty()) {
+                                gallery_cursor = (gallery_cursor + 1) %
+                                                 static_cast<int>(gallery_items.size());
+                            }
+                        } else if (action == artc::Action::Next ||
+                                   action == artc::Action::Confirm) {
+                            if (!gallery_items.empty() && gallery_items[gallery_cursor].unlocked) {
+                                cg_view_path = gallery_items[gallery_cursor].full;
+                                screen = Screen::CGView;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (screen == Screen::CGView) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back ||
+                            action == artc::Action::Next || action == artc::Action::Confirm) {
+                            screen = Screen::Gallery;
+                        }
+                        continue;
+                    }
+
                     if (screen == Screen::Save || screen == Screen::Load) {
-                        if (action == artc::Action::Menu) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back) {
                             screen = menu_return;
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
@@ -533,10 +688,19 @@ int main(int argc, char** argv) {
                 if (input.skip_held()) {
                     const Uint32 now = SDL_GetTicks();
                     if (now - last_skip >= 80) {
+                        remember_state();
                         engine.step(artc::Action::Skip);
                         play_audio();
                         last_skip = now;
                     }
+                }
+                const std::string& event_asset = engine.snapshot().background;
+                if (event_asset != last_event_asset &&
+                    event_asset.find("/ev/") != std::string::npos) {
+                    last_event_asset = event_asset;
+                    gallery.unlock_for_asset(event_asset);
+                    refresh_gallery();
+                    gallery.save(options.save_dir / "gallery.json");
                 }
                 audio.update();
                 renderer.draw(engine.snapshot());
@@ -550,6 +714,21 @@ int main(int argc, char** argv) {
             } else if (screen == Screen::Pause) {
                 audio.update();
                 renderer.draw_title(pause_items, pause_cursor);
+                renderer.present();
+                SDL_Delay(16);
+            } else if (screen == Screen::Settings) {
+                audio.update();
+                renderer.draw_settings(settings, settings_cursor);
+                renderer.present();
+                SDL_Delay(16);
+            } else if (screen == Screen::Gallery) {
+                audio.update();
+                renderer.draw_gallery(gallery_items, gallery_cursor);
+                renderer.present();
+                SDL_Delay(16);
+            } else if (screen == Screen::CGView) {
+                audio.update();
+                renderer.draw_cg_view(cg_view_path);
                 renderer.present();
                 SDL_Delay(16);
             } else {

@@ -20,6 +20,7 @@ public:
     void play(const std::vector<AudioCommand>& commands);
     void update();
     void shutdown();
+    void set_volumes(float bgm, float se, float voice);
 
     bool available() const { return available_; }
     int voice_channel() const { return 0; }
@@ -33,6 +34,9 @@ private:
     std::string next_music_;
     std::atomic<bool> music_finished_{false};
     int se_cursor_ = 1;
+    float bgm_volume_ = 1.0f;
+    float se_volume_ = 1.0f;
+    float voice_volume_ = 1.0f;
     std::unordered_map<std::string, Mix_Chunk*> chunks_;
 
     static AudioPlayer* active_;

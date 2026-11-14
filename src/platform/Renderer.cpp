@@ -390,6 +390,104 @@ void Renderer::draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
 
+void Renderer::draw_settings(const UserSettings& settings, int cursor) {
+    SDL_SetRenderDrawColor(renderer_, 18, 20, 30, 255);
+    SDL_RenderClear(renderer_);
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer_, 42, 46, 62, 235);
+    SDL_Rect panel{210, 130, 620, 470};
+    SDL_RenderFillRect(renderer_, &panel);
+    SDL_SetRenderDrawColor(renderer_, 110, 118, 145, 220);
+    SDL_RenderDrawRect(renderer_, &panel);
+    draw_outlined(select_font_, "設定", SDL_Color{255, 255, 255, 255},
+                  SDL_Color{35, 20, 30, 255}, 60, 35);
+
+    const std::vector<std::string> labels = {
+        "文字速度", "オート速度", "BGM音量", "SE音量", "ボイス音量", "全画面",
+    };
+    char values[6][24]{};
+    std::snprintf(values[0], sizeof(values[0]), "%.1fx", settings.text_speed);
+    std::snprintf(values[1], sizeof(values[1]), "%.1fx", settings.auto_speed);
+    std::snprintf(values[2], sizeof(values[2]), "%d%%",
+                  static_cast<int>(settings.bgm_volume * 100));
+    std::snprintf(values[3], sizeof(values[3]), "%d%%",
+                  static_cast<int>(settings.se_volume * 100));
+    std::snprintf(values[4], sizeof(values[4]), "%d%%",
+                  static_cast<int>(settings.voice_volume * 100));
+    std::snprintf(values[5], sizeof(values[5]), "%s", settings.fullscreen ? "ON" : "OFF");
+
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    for (int i = 0; i < 6; ++i) {
+        const int y = 190 + i * 66;
+        if (i == cursor) {
+            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 180);
+            SDL_Rect highlight{250, y - 10, 520, 52};
+            SDL_RenderFillRect(renderer_, &highlight);
+        }
+        draw_outlined(menu_font_, labels[i], SDL_Color{255, 255, 255, 255},
+                      SDL_Color{35, 20, 30, 255}, 300, y);
+        draw_outlined(menu_font_, values[i], SDL_Color{240, 220, 180, 255},
+                      SDL_Color{35, 20, 30, 255}, 620, y);
+    }
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+}
+
+void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
+    SDL_SetRenderDrawColor(renderer_, 8, 10, 18, 255);
+    SDL_RenderClear(renderer_);
+    const std::string base = config_.resolve_magic(":ui/");
+    if (SDL_Texture* background = textures_->get(path_of(assets_, base + "extra/bg.png"))) {
+        SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
+        SDL_RenderCopy(renderer_, background, nullptr, &dst);
+    }
+    draw_outlined(select_font_, "CG鑑賞", SDL_Color{255, 255, 255, 255},
+                  SDL_Color{35, 20, 30, 255}, 60, 35);
+
+    const int columns = 4;
+    const int cell_width = 230;
+    const int cell_height = 190;
+    const int origin_x = 48;
+    const int origin_y = 125;
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+        const int column = i % columns;
+        const int row = i / columns;
+        if (row >= 3) break;
+        const int x = origin_x + column * 245;
+        const int y = origin_y + row * cell_height;
+        SDL_Rect cell{x, y, cell_width, cell_height - 16};
+        if (i == cursor) {
+            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 200);
+            SDL_RenderFillRect(renderer_, &cell);
+        }
+        SDL_SetRenderDrawColor(renderer_, 70, 78, 96, 220);
+        SDL_RenderDrawRect(renderer_, &cell);
+        if (items[i].unlocked) {
+            if (SDL_Texture* thumb = textures_->get(path_of(assets_, items[i].thumb))) {
+                SDL_Rect dst{x + 12, y + 10, cell_width - 24, 130};
+                SDL_RenderCopy(renderer_, thumb, nullptr, &dst);
+            }
+        } else {
+            draw_outlined(menu_font_, "LOCKED", SDL_Color{160, 160, 170, 255},
+                          SDL_Color{25, 20, 30, 255}, x + 65, y + 60);
+        }
+        draw_outlined(menu_font_, items[i].id, SDL_Color{230, 235, 245, 255},
+                      SDL_Color{25, 20, 30, 255}, x + 12, y + 148);
+    }
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+}
+
+void Renderer::draw_cg_view(const std::string& relative_path) {
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
+    SDL_RenderClear(renderer_);
+    if (!relative_path.empty()) {
+        if (SDL_Texture* image = textures_->get(path_of(assets_, relative_path))) {
+            SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
+            SDL_RenderCopy(renderer_, image, nullptr, &dst);
+        }
+    }
+}
+
 void Renderer::draw_background(const GameSnapshot& snapshot) {
     if (!snapshot.background.empty()) {
         const std::string path = path_of(assets_, snapshot.background);

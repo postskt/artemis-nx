@@ -24,6 +24,8 @@ src/platform/
   InputHandler.cpp/.hpp  keyboard/mouse/touch/controller hot-plug
   GameSelector.cpp/.hpp  multi-game launcher
   SaveManager.cpp/.hpp   JSON save slots + PNG thumbnails
+  Settings.cpp/.hpp      persisted user settings
+  Gallery.cpp/.hpp       CG thumbnail list + unlock state
   main.cpp               PC + __SWITCH__ entry point, title/game/menu screens
 ```
 
@@ -43,6 +45,9 @@ The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
   `Mix_HookMusicFinished`.
 - Controller/touch/keyboard input and a multi-game launcher.
 - Native title screen and save/load slots (8 slots, thumbnail previews).
+- Settings UI (text/auto speed, BGM/SE/voice volume, fullscreen) persisted as JSON.
+- CG gallery with thumbnail grid and persistent unlock state.
+- Text history rollback with Backspace.
 - `F5` opens the save menu, `F9` opens the load menu, `Esc` opens the in-game menu.
 - Switch build with devkitPro, NRO and NSP-staging friendly CMake targets.
 
@@ -73,8 +78,9 @@ Run it against your own prepared data:
 ```
 
 The title screen is shown by default. Use `--no-title` for a direct game
-launch. In game, `F5` opens the save menu, `F9` opens the load menu, and `Esc`
-opens the pause menu. Saves are JSON + PNG thumbnails under `--save-dir`.
+launch. In game, `F5` opens the save menu, `F9` opens the load menu, `Esc`
+opens the pause menu, and `Backspace` rewinds one text step. Saves are JSON +
+PNG thumbnails under `--save-dir`.
 
 Or use the launcher:
 
