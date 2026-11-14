@@ -19,11 +19,12 @@ src/core/
 
 src/platform/
   Renderer.cpp/.hpp      SDL2 logical-size rendering, 64-texture LRU,
-                         background/CG/fg/textbox/select/OSD
+                         background/CG/fg/textbox/select/OSD, title/save UI
   AudioPlayer.cpp/.hpp   8-channel mixer, voice lock, BGM intro -> loop
   InputHandler.cpp/.hpp  keyboard/mouse/touch/controller hot-plug
   GameSelector.cpp/.hpp  multi-game launcher
-  main.cpp               PC + __SWITCH__ entry point
+  SaveManager.cpp/.hpp   JSON save slots + PNG thumbnails
+  main.cpp               PC + __SWITCH__ entry point, title/game/menu screens
 ```
 
 The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
@@ -41,6 +42,8 @@ The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
 - 8 mixer channels: voice on channel 0, SE on 1–7, BGM intro/loop handoff via
   `Mix_HookMusicFinished`.
 - Controller/touch/keyboard input and a multi-game launcher.
+- Native title screen and save/load slots (8 slots, thumbnail previews).
+- `F5` opens the save menu, `F9` opens the load menu, `Esc` opens the in-game menu.
 - Switch build with devkitPro, NRO and NSP-staging friendly CMake targets.
 
 ## Build on Windows (MSYS2 UCRT64)
@@ -65,8 +68,13 @@ Run it against your own prepared data:
 ```powershell
 .\build\src\platform\artemis_runner.exe `
   --root path\to\game_data `
-  --config path\to\game_data\runner_config.json
+  --config path\to\game_data\runner_config.json `
+  --save-dir path\to\saves
 ```
+
+The title screen is shown by default. Use `--no-title` for a direct game
+launch. In game, `F5` opens the save menu, `F9` opens the load menu, and `Esc`
+opens the pause menu. Saves are JSON + PNG thumbnails under `--save-dir`.
 
 Or use the launcher:
 

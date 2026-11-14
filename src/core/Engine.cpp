@@ -56,6 +56,97 @@ double numeric(const nlohmann::json& value, bool& ok) {
     return ok ? value.get<double>() : 0.0;
 }
 
+nlohmann::json fg_to_json(const CharacterSprite& sprite) {
+    nlohmann::json value = {
+        {"ch", sprite.ch}, {"body", sprite.body}, {"face", sprite.face},
+        {"x", sprite.x}, {"y", sprite.y}, {"face_x", sprite.face_x},
+        {"face_y", sprite.face_y}, {"x2", sprite.x2}, {"y2", sprite.y2},
+        {"z", sprite.z}, {"mode", sprite.mode}, {"size", sprite.size},
+        {"scale", sprite.scale},
+    };
+    value["ex"] = sprite.ex;
+    value["ex_positions"] = nlohmann::json::array();
+    for (const auto& position : sprite.ex_positions) {
+        value["ex_positions"].push_back({position.first, position.second});
+    }
+    return value;
+}
+
+CharacterSprite fg_from_json(const nlohmann::json& value) {
+    CharacterSprite sprite;
+    sprite.ch = value.value("ch", "");
+    sprite.body = value.value("body", "");
+    sprite.face = value.value("face", "");
+    sprite.x = value.value("x", 0);
+    sprite.y = value.value("y", 0);
+    sprite.face_x = value.value("face_x", 0);
+    sprite.face_y = value.value("face_y", 0);
+    sprite.x2 = value.value("x2", 0);
+    sprite.y2 = value.value("y2", 0);
+    sprite.z = value.value("z", 0.0);
+    sprite.mode = value.value("mode", 3);
+    sprite.size = value.value("size", "");
+    sprite.scale = value.value("scale", 1.0);
+    if (value.contains("ex") && value["ex"].is_array()) {
+        sprite.ex = value["ex"].get<std::vector<std::string>>();
+    }
+    if (value.contains("ex_positions") && value["ex_positions"].is_array()) {
+        for (const auto& position : value["ex_positions"]) {
+            if (position.is_array() && position.size() >= 2) {
+                sprite.ex_positions.emplace_back(position[0].get<int>(), position[1].get<int>());
+            }
+        }
+    }
+    return sprite;
+}
+
+nlohmann::json bgm_to_json(const BgmState& bgm) {
+    return {
+        {"path", bgm.path}, {"next_path", bgm.next_path},
+        {"logical_name", bgm.logical_name}, {"loop", bgm.loop},
+        {"valid", bgm.valid},
+    };
+}
+
+BgmState bgm_from_json(const nlohmann::json& value) {
+    BgmState bgm;
+    bgm.path = value.value("path", "");
+    bgm.next_path = value.value("next_path", "");
+    bgm.logical_name = value.value("logical_name", "");
+    bgm.loop = value.value("loop", false);
+    bgm.valid = value.value("valid", false);
+    return bgm;
+}
+
+nlohmann::json select_to_json(const SelectState& select) {
+    nlohmann::json value = {
+        {"active", select.active}, {"cursor", select.cursor},
+    };
+    value["options"] = nlohmann::json::array();
+    for (const auto& option : select.options) {
+        value["options"].push_back({
+            {"text", option.text}, {"file", option.file}, {"label", option.label},
+        });
+    }
+    return value;
+}
+
+SelectState select_from_json(const nlohmann::json& value) {
+    SelectState select;
+    select.active = value.value("active", false);
+    select.cursor = value.value("cursor", 0);
+    if (value.contains("options") && value["options"].is_array()) {
+        for (const auto& option : value["options"]) {
+            SelectOption item;
+            item.text = option.value("text", "");
+            item.file = option.value("file", "");
+            item.label = option.value("label", "");
+            select.options.push_back(std::move(item));
+        }
+    }
+    return select;
+}
+
 }  // namespace
 
 Engine::Engine(const Config& config, AssetManager& assets, LuaLoader& loader)
@@ -175,6 +266,121 @@ std::vector<AudioCommand> Engine::consume_audio() {
     std::vector<AudioCommand> result(audio_queue_.begin(), audio_queue_.end());
     audio_queue_.clear();
     return result;
+}
+
+nlohmann::json Engine::export_state() const {
+    nlohmann::json state = {
+        {"version", 1},
+        {"script", script_name_},
+        {"block", block_index_},
+        {"command", command_index_},
+        {"waiting_text", waiting_text_},
+        {"finished", finished_},
+        {"background", snapshot_.background},
+        {"speaker", snapshot_.speaker},
+        {"text", snapshot_.text},
+        {"textbox_visible", snapshot_.textbox_visible},
+        {"title", snapshot_.title},
+        {"scene_ended", snapshot_.scene_ended},
+        {"staffroll", snapshot_.staffroll},
+        {"brandlogo", snapshot_.brandlogo},
+        {"title_requested", snapshot_.title_requested},
+        {"local_vars", local_vars_},
+        {"global_vars", global_vars_},
+        {"bgm", bgm_to_json(current_bgm_)},
+        {"select", select_to_json(select_)},
+        {"color_tone", {
+            {"active", snapshot_.color_tone.active},
+            {"r", snapshot_.color_tone.r}, {"g", snapshot_.color_tone.g},
+            {"b", snapshot_.color_tone.b}, {"a", snapshot_.color_tone.a},
+        }},
+        {"flash", {
+            {"active", snapshot_.flash.active},
+            {"r", snapshot_.flash.r}, {"g", snapshot_.flash.g},
+            {"b", snapshot_.flash.b}, {"alpha", snapshot_.flash.alpha},
+        }},
+        {"active_fgs", nlohmann::json::array()},
+        {"cg_layers", nlohmann::json::array()},
+    };
+    for (const auto& sprite : active_fgs_) state["active_fgs"].push_back(fg_to_json(sprite));
+    for (const auto& [id, path] : cg_layers_) state["cg_layers"].push_back({{"id", id}, {"path", path}});
+    return state;
+}
+
+bool Engine::import_state(const nlohmann::json& state, std::string* error) {
+    auto fail = [&](const std::string& message) {
+        if (error) *error = message;
+        return false;
+    };
+    if (!state.is_object() || state.value("version", 0) != 1) {
+        return fail("unsupported save version");
+    }
+    const std::string script = state.value("script", "");
+    if (script.empty() || !load_script(script)) {
+        return fail("cannot load saved script: " + script);
+    }
+    const int block = state.value("block", 1);
+    if (block < 1 || block > static_cast<int>(script_->blocks.size())) {
+        return fail("saved block out of range");
+    }
+    block_index_ = block;
+    command_index_ = std::max(0, state.value("command", 0));
+    waiting_text_ = state.value("waiting_text", false);
+    finished_ = state.value("finished", false);
+    jumped_ = false;
+    active_fgs_.clear();
+    if (state.contains("active_fgs") && state["active_fgs"].is_array()) {
+        for (const auto& sprite : state["active_fgs"]) active_fgs_.push_back(fg_from_json(sprite));
+    }
+    cg_layers_.clear();
+    if (state.contains("cg_layers") && state["cg_layers"].is_array()) {
+        for (const auto& layer : state["cg_layers"]) {
+            cg_layers_[layer.value("id", "")] = layer.value("path", "");
+        }
+    }
+    local_vars_ = state.value("local_vars", std::map<std::string, nlohmann::json>{});
+    global_vars_ = state.value("global_vars", std::map<std::string, nlohmann::json>{});
+    current_bgm_ = bgm_from_json(state.value("bgm", nlohmann::json::object()));
+    select_ = select_from_json(state.value("select", nlohmann::json::object()));
+
+    snapshot_ = GameSnapshot{};
+    snapshot_.background = state.value("background", "");
+    snapshot_.speaker = state.value("speaker", "");
+    snapshot_.text = state.value("text", "");
+    snapshot_.textbox_visible = state.value("textbox_visible", true);
+    snapshot_.title = state.value("title", "");
+    snapshot_.scene_ended = state.value("scene_ended", false);
+    snapshot_.staffroll = state.value("staffroll", false);
+    snapshot_.brandlogo = state.value("brandlogo", false);
+    snapshot_.title_requested = state.value("title_requested", false);
+    if (state.contains("color_tone")) {
+        const auto& tone = state["color_tone"];
+        snapshot_.color_tone.active = tone.value("active", false);
+        snapshot_.color_tone.r = tone.value("r", 0);
+        snapshot_.color_tone.g = tone.value("g", 0);
+        snapshot_.color_tone.b = tone.value("b", 0);
+        snapshot_.color_tone.a = tone.value("a", 0);
+    }
+    if (state.contains("flash")) {
+        const auto& flash = state["flash"];
+        snapshot_.flash.active = flash.value("active", false);
+        snapshot_.flash.r = flash.value("r", 255);
+        snapshot_.flash.g = flash.value("g", 255);
+        snapshot_.flash.b = flash.value("b", 255);
+        snapshot_.flash.alpha = flash.value("alpha", 0.0);
+    }
+    update_snapshot();
+    audio_queue_.clear();
+    audio_queue_.push_back(AudioCommand{AudioKind::VoiceStop});
+    if (current_bgm_.valid && !current_bgm_.path.empty()) {
+        AudioCommand bgm;
+        bgm.kind = AudioKind::Bgm;
+        bgm.path = current_bgm_.path;
+        bgm.next_path = current_bgm_.next_path;
+        bgm.loop = true;
+        audio_queue_.push_back(std::move(bgm));
+    }
+    return true;
 }
 
 bool Engine::load_script(const std::string& name) {

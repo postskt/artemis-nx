@@ -25,6 +25,9 @@ enum class Action {
     SelectUp,
     SelectDown,
     ToggleDebug,
+    Menu,
+    QuickSave,
+    QuickLoad,
     Confirm,
     Cancel,
     Quit,
@@ -40,6 +43,9 @@ public:
     const GameSnapshot& snapshot() const { return snapshot_; }
     std::vector<AudioCommand> consume_audio();
     bool finished() const { return finished_; }
+
+    nlohmann::json export_state() const;
+    bool import_state(const nlohmann::json& state, std::string* error = nullptr);
 
     const std::string& current_script_name() const { return script_name_; }
 

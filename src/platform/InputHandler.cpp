@@ -62,10 +62,16 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                     actions.push_back(Action::ToggleUi);
                     break;
                 case SDLK_ESCAPE:
-                    actions.push_back(Action::Quit);
+                    actions.push_back(Action::Menu);
                     break;
                 case SDLK_F1:
                     actions.push_back(Action::ToggleDebug);
+                    break;
+                case SDLK_F5:
+                    actions.push_back(Action::QuickSave);
+                    break;
+                case SDLK_F9:
+                    actions.push_back(Action::QuickLoad);
                     break;
                 case SDLK_UP:
                     actions.push_back(Action::SelectUp);
@@ -101,7 +107,7 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                     actions.push_back(Action::Next);
                     break;
                 case SDL_CONTROLLER_BUTTON_BACK:
-                    actions.push_back(Action::ToggleUi);
+                    actions.push_back(Action::Menu);
                     break;
                 case SDL_CONTROLLER_BUTTON_START:
                     actions.push_back(Action::ToggleDebug);

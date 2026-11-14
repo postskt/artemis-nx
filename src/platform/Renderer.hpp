@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <SDL.h>
 #include <SDL_ttf.h>
@@ -11,6 +12,7 @@
 #include "AssetManager.hpp"
 #include "Config.hpp"
 #include "Engine.hpp"
+#include "SaveManager.hpp"
 
 namespace artc {
 
@@ -47,6 +49,8 @@ public:
     void draw(const GameSnapshot& snapshot);
     void present();
     bool save_png(const std::string& path);
+    void draw_title(const std::vector<std::string>& items, int cursor);
+    void draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor, bool save_mode);
     void toggle_debug() { debug_ = !debug_; }
     bool debug() const { return debug_; }
     TextureCache& textures() { return *textures_; }
@@ -60,6 +64,7 @@ private:
     TTF_Font* body_font_ = nullptr;
     TTF_Font* name_font_ = nullptr;
     TTF_Font* select_font_ = nullptr;
+    TTF_Font* menu_font_ = nullptr;
     TTF_Font* osd_font_ = nullptr;
     bool debug_ = false;
 
@@ -90,6 +95,29 @@ private:
                                               int width);
     static SDL_Color parse_color(const std::string& value, SDL_Color fallback);
     static std::string path_of(const AssetManager& assets, const std::string& relative);
+
+    // Text is re-rendered only when its content or style changes; every frame
+    // just blits one cached texture per line.  Re-rasterising glyphs (with an
+    // 8-direction outline) on every frame is far too slow for the Switch CPU
+    // and made lines drop out for a frame.
+    struct TextEntry {
+        SDL_Texture* texture = nullptr;
+        int width = 0;
+        int height = 0;
+        std::list<std::string>::iterator lru;
+    };
+    SDL_Texture* text_texture(TTF_Font* font, const std::string& text,
+                              SDL_Color color, SDL_Color outline,
+                              int* width, int* height);
+    std::vector<std::string> wrap_text_cached(TTF_Font* font, const std::string& text,
+                                              int width);
+    void draw_outlined(TTF_Font* font, const std::string& text, SDL_Color color,
+                       SDL_Color outline, int x, int y);
+    void clear_text_cache();
+
+    std::list<std::string> text_lru_;
+    std::unordered_map<std::string, TextEntry> text_cache_;
+    std::unordered_map<std::string, std::vector<std::string>> wrap_cache_;
 };
 
 }  // namespace artc

@@ -3,6 +3,7 @@ set(ARTC_PLATFORM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/AudioPlayer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/InputHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/GameSelector.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SaveManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
 )
 

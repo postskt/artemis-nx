@@ -44,39 +44,6 @@ std::size_t utf8_char_len(unsigned char lead) {
     return 1;
 }
 
-void render_outlined_text(SDL_Renderer* renderer, TTF_Font* font, const std::string& text,
-                          SDL_Color color, SDL_Color outline, int x, int y) {
-    if (text.empty()) return;
-    SDL_Surface* outline_surface = TTF_RenderUTF8_Blended(font, text.c_str(), outline);
-    if (outline_surface) {
-        SDL_Texture* outline_texture = SDL_CreateTextureFromSurface(renderer, outline_surface);
-        SDL_FreeSurface(outline_surface);
-        if (outline_texture) {
-            int width = 0;
-            int height = 0;
-            SDL_QueryTexture(outline_texture, nullptr, nullptr, &width, &height);
-            const int offsets[][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2},
-                                      {-2, -2}, {2, 2}, {-2, 2}, {2, -2}};
-            for (const auto& offset : offsets) {
-                SDL_Rect dst{x + offset[0], y + offset[1], width, height};
-                SDL_RenderCopy(renderer, outline_texture, nullptr, &dst);
-            }
-            SDL_DestroyTexture(outline_texture);
-        }
-    }
-    SDL_Surface* surface = TTF_RenderUTF8_Blended(font, text.c_str(), color);
-    if (!surface) return;
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_FreeSurface(surface);
-    if (!texture) return;
-    int width = 0;
-    int height = 0;
-    SDL_QueryTexture(texture, nullptr, nullptr, &width, &height);
-    SDL_Rect dst{x, y, width, height};
-    SDL_RenderCopy(renderer, texture, nullptr, &dst);
-    SDL_DestroyTexture(texture);
-}
-
 }  // namespace
 
 TextureCache::TextureCache(SDL_Renderer* renderer, std::size_t capacity)
@@ -143,19 +110,130 @@ Renderer::Renderer(SDL_Window* window, const Config& config, const AssetManager&
     body_font_ = TTF_OpenFont(font_path.c_str(), body_size_);
     name_font_ = TTF_OpenFont(font_path.c_str(), name_size_);
     select_font_ = TTF_OpenFont(font_path.c_str(), 42);
+    menu_font_ = TTF_OpenFont(font_path.c_str(), 28);
     osd_font_ = TTF_OpenFont(font_path.c_str(), 16);
-    if (!body_font_ || !name_font_ || !select_font_ || !osd_font_) {
+    if (!body_font_ || !name_font_ || !select_font_ || !menu_font_ || !osd_font_) {
         throw std::runtime_error(std::string("cannot open font: ") + TTF_GetError());
     }
 }
 
 Renderer::~Renderer() {
+    clear_text_cache();
     textures_->clear();
     if (body_font_) TTF_CloseFont(body_font_);
     if (name_font_) TTF_CloseFont(name_font_);
     if (select_font_) TTF_CloseFont(select_font_);
+    if (menu_font_) TTF_CloseFont(menu_font_);
     if (osd_font_) TTF_CloseFont(osd_font_);
     if (renderer_) SDL_DestroyRenderer(renderer_);
+}
+
+void Renderer::clear_text_cache() {
+    for (auto& [key, entry] : text_cache_) {
+        (void)key;
+        if (entry.texture) SDL_DestroyTexture(entry.texture);
+    }
+    text_cache_.clear();
+    text_lru_.clear();
+    wrap_cache_.clear();
+}
+
+SDL_Texture* Renderer::text_texture(TTF_Font* font, const std::string& text,
+                                    SDL_Color color, SDL_Color outline,
+                                    int* width, int* height) {
+    if (text.empty() || !font) return nullptr;
+    const std::string key = std::to_string(reinterpret_cast<std::uintptr_t>(font)) + "|" +
+                            std::to_string(color.r) + "," + std::to_string(color.g) + "," +
+                            std::to_string(color.b) + "|" + std::to_string(outline.r) + "," +
+                            std::to_string(outline.g) + "," + std::to_string(outline.b) + "|" +
+                            text;
+    auto found = text_cache_.find(key);
+    if (found != text_cache_.end()) {
+        text_lru_.splice(text_lru_.begin(), text_lru_, found->second.lru);
+        if (width) *width = found->second.width;
+        if (height) *height = found->second.height;
+        return found->second.texture;
+    }
+
+    SDL_Surface* outline_surface = TTF_RenderUTF8_Blended(font, text.c_str(), outline);
+    SDL_Surface* fill_surface = TTF_RenderUTF8_Blended(font, text.c_str(), color);
+    if (!fill_surface) {
+        if (outline_surface) SDL_FreeSurface(outline_surface);
+        return nullptr;
+    }
+    const int pad = 2;
+    SDL_Surface* composed = SDL_CreateRGBSurfaceWithFormat(
+        0, fill_surface->w + pad * 2, fill_surface->h + pad * 2, 32,
+        SDL_PIXELFORMAT_ARGB8888);
+    if (!composed) {
+        SDL_FreeSurface(fill_surface);
+        if (outline_surface) SDL_FreeSurface(outline_surface);
+        return nullptr;
+    }
+    SDL_SetSurfaceBlendMode(composed, SDL_BLENDMODE_NONE);
+    SDL_FillRect(composed, nullptr, SDL_MapRGBA(composed->format, 0, 0, 0, 0));
+    SDL_SetSurfaceBlendMode(composed, SDL_BLENDMODE_BLEND);
+    if (outline_surface) {
+        SDL_SetSurfaceBlendMode(outline_surface, SDL_BLENDMODE_BLEND);
+        const int offsets[][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2},
+                                  {-2, -2}, {2, 2}, {-2, 2}, {2, -2}};
+        for (const auto& offset : offsets) {
+            SDL_Rect dst{pad + offset[0], pad + offset[1], outline_surface->w,
+                         outline_surface->h};
+            SDL_BlitSurface(outline_surface, nullptr, composed, &dst);
+        }
+        SDL_FreeSurface(outline_surface);
+    }
+    {
+        SDL_SetSurfaceBlendMode(fill_surface, SDL_BLENDMODE_BLEND);
+        SDL_Rect dst{pad, pad, fill_surface->w, fill_surface->h};
+        SDL_BlitSurface(fill_surface, nullptr, composed, &dst);
+    }
+    SDL_FreeSurface(fill_surface);
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer_, composed);
+    int tex_w = composed->w;
+    int tex_h = composed->h;
+    SDL_FreeSurface(composed);
+    if (!texture) return nullptr;
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+
+    if (text_cache_.size() >= 160 && !text_lru_.empty()) {
+        const std::string victim = text_lru_.back();
+        text_lru_.pop_back();
+        auto it = text_cache_.find(victim);
+        if (it != text_cache_.end()) {
+            if (it->second.texture) SDL_DestroyTexture(it->second.texture);
+            text_cache_.erase(it);
+        }
+    }
+    text_lru_.push_front(key);
+    text_cache_[key] = TextEntry{texture, tex_w, tex_h, text_lru_.begin()};
+    if (width) *width = tex_w;
+    if (height) *height = tex_h;
+    return texture;
+}
+
+void Renderer::draw_outlined(TTF_Font* font, const std::string& text, SDL_Color color,
+                             SDL_Color outline, int x, int y) {
+    int width = 0;
+    int height = 0;
+    SDL_Texture* texture = text_texture(font, text, color, outline, &width, &height);
+    if (!texture) return;
+    SDL_Rect dst{x - 2, y - 2, width, height};
+    SDL_RenderCopy(renderer_, texture, nullptr, &dst);
+}
+
+std::vector<std::string> Renderer::wrap_text_cached(TTF_Font* font, const std::string& text,
+                                                    int width) {
+    const std::string key = std::to_string(reinterpret_cast<std::uintptr_t>(font)) + "|" +
+                            std::to_string(width) + "|" + text;
+    auto found = wrap_cache_.find(key);
+    if (found != wrap_cache_.end()) return found->second;
+    std::vector<std::string> lines = wrap_text(font, text, width);
+    if (wrap_cache_.size() > 64) wrap_cache_.clear();
+    wrap_cache_[key] = lines;
+    return lines;
 }
 
 void Renderer::load_layout() {
@@ -209,6 +287,107 @@ bool Renderer::save_png(const std::string& path) {
     const bool ok = IMG_SavePNG(surface, path.c_str()) == 0;
     SDL_FreeSurface(surface);
     return ok;
+}
+
+void Renderer::draw_title(const std::vector<std::string>& items, int cursor) {
+    SDL_SetRenderDrawColor(renderer_, 8, 10, 18, 255);
+    SDL_RenderClear(renderer_);
+
+    const std::string base = config_.resolve_magic(":ui/");
+    if (SDL_Texture* background = textures_->get(path_of(assets_, base + "title/bg.png"))) {
+        SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
+        SDL_RenderCopy(renderer_, background, nullptr, &dst);
+    }
+    // The title UI directory also contains a trial-version Raspberry Cube logo
+    // in some Windows data sets.  Prefer the game's own CG logo.
+    SDL_Texture* logo_texture = textures_->get(
+        path_of(assets_, config_.resolve_magic(":cg/") + "logo.png"));
+    if (!logo_texture) {
+        logo_texture = textures_->get(path_of(assets_, base + "title/logo.png"));
+    }
+    if (logo_texture) {
+        int width = 0;
+        int height = 0;
+        SDL_QueryTexture(logo_texture, nullptr, nullptr, &width, &height);
+        const int max_width = config_.logical_width() * 3 / 5;
+        if (width < max_width) {
+            const double scale = static_cast<double>(max_width) / width;
+            width = max_width;
+            height = static_cast<int>(height * scale);
+        }
+        SDL_Rect dst{(config_.logical_width() - width) / 2, 70, width, height};
+        SDL_RenderCopy(renderer_, logo_texture, nullptr, &dst);
+    }
+
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    const int start_y = 430;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        const int y = start_y + static_cast<int>(i) * 48;
+        if (static_cast<int>(i) == cursor) {
+            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 190);
+            SDL_Rect highlight{config_.logical_width() / 2 - 220, y - 7, 440, 42};
+            SDL_RenderFillRect(renderer_, &highlight);
+        }
+        draw_outlined(menu_font_, items[i], SDL_Color{255, 255, 255, 255},
+                      SDL_Color{35, 20, 30, 255}, config_.logical_width() / 2 - 190, y);
+    }
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+}
+
+void Renderer::draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor,
+                              bool save_mode) {
+    SDL_SetRenderDrawColor(renderer_, 8, 10, 18, 255);
+    SDL_RenderClear(renderer_);
+    const std::string base = config_.resolve_magic(":ui/");
+    if (SDL_Texture* background = textures_->get(
+            path_of(assets_, base + (save_mode ? "save/bg_save.png" : "save/bg_load.png")))) {
+        SDL_Rect dst{0, 0, config_.logical_width(), config_.logical_height()};
+        SDL_RenderCopy(renderer_, background, nullptr, &dst);
+    }
+
+    draw_outlined(select_font_, save_mode ? "セーブ" : "ロード",
+                  SDL_Color{255, 255, 255, 255}, SDL_Color{35, 20, 30, 255}, 60, 35);
+
+    const int cell_width = 450;
+    const int cell_height = 120;
+    const int origin_x = 48;
+    const int origin_y = 115;
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    for (int i = 0; i < 8 && i < static_cast<int>(slots.size()); ++i) {
+        const int column = i % 2;
+        const int row = i / 2;
+        const int x = origin_x + column * 500;
+        const int y = origin_y + row * cell_height;
+        SDL_Rect cell{x, y, cell_width, cell_height - 12};
+        if (i == cursor) {
+            SDL_SetRenderDrawColor(renderer_, 178, 72, 112, 180);
+            SDL_RenderFillRect(renderer_, &cell);
+        }
+        SDL_SetRenderDrawColor(renderer_, 70, 78, 96, 220);
+        SDL_RenderDrawRect(renderer_, &cell);
+
+        const auto& slot = slots[i];
+        SDL_Rect thumb{x + 8, y + 8, 160, 90};
+        if (slot.exists && !slot.thumbnail.empty()) {
+            if (SDL_Texture* preview = textures_->get(slot.thumbnail)) {
+                SDL_RenderCopy(renderer_, preview, nullptr, &thumb);
+            }
+        } else {
+            SDL_SetRenderDrawColor(renderer_, 35, 38, 48, 255);
+            SDL_RenderFillRect(renderer_, &thumb);
+        }
+        const std::string number = "SLOT " + std::to_string(slot.slot);
+        draw_outlined(menu_font_, number, SDL_Color{220, 225, 240, 255},
+                      SDL_Color{25, 20, 30, 255}, x + 180, y + 10);
+        const std::string title = slot.exists
+                                      ? (slot.title.empty() ? slot.script : slot.title)
+                                      : "EMPTY";
+        draw_outlined(menu_font_, title, SDL_Color{255, 255, 255, 255},
+                      SDL_Color{25, 20, 30, 255}, x + 180, y + 44);
+        draw_outlined(menu_font_, slot.saved_at, SDL_Color{190, 200, 220, 255},
+                      SDL_Color{25, 20, 30, 255}, x + 180, y + 78);
+    }
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
 
 void Renderer::draw_background(const GameSnapshot& snapshot) {
@@ -296,8 +475,8 @@ void Renderer::draw_textbox(const GameSnapshot& snapshot) {
     }
 
     if (!snapshot.speaker.empty()) {
-        render_outlined_text(renderer_, name_font_, snapshot.speaker,
-                             name_color_, name_outline_, name_left_, name_top_);
+        draw_outlined(name_font_, snapshot.speaker, name_color_, name_outline_,
+                      name_left_, name_top_);
     }
     if (!snapshot.text.empty()) {
         draw_text(snapshot.text, body_font_, body_color_, body_outline_,
@@ -308,10 +487,10 @@ void Renderer::draw_textbox(const GameSnapshot& snapshot) {
 void Renderer::draw_text(const std::string& text, TTF_Font* font, SDL_Color color,
                          SDL_Color outline, int x, int y, int wrap_width,
                          int line_height) {
-    const auto lines = wrap_text(font, text, wrap_width);
+    const auto lines = wrap_text_cached(font, text, wrap_width);
     int cursor = y;
     for (const auto& line : lines) {
-        render_outlined_text(renderer_, font, line, color, outline, x, cursor);
+        draw_outlined(font, line, color, outline, x, cursor);
         cursor += line_height;
     }
 }
@@ -382,12 +561,13 @@ void Renderer::draw_select(const GameSnapshot& snapshot) {
         const std::string text = snapshot.select.options[i].text;
         int width = 0;
         int height = 0;
-        TTF_SizeUTF8(select_font_, text.c_str(), &width, &height);
-        render_outlined_text(renderer_, select_font_, text,
-                             SDL_Color{255, 255, 255, 255},
-                             SDL_Color{40, 20, 30, 255},
-                             panel_x + (panel_width - width) / 2,
-                             row.y + (row.h - height) / 2);
+        text_texture(select_font_, text, SDL_Color{255, 255, 255, 255},
+                     SDL_Color{40, 20, 30, 255}, &width, &height);
+        draw_outlined(select_font_, text,
+                      SDL_Color{255, 255, 255, 255},
+                      SDL_Color{40, 20, 30, 255},
+                      panel_x + (panel_width - width) / 2,
+                      row.y + (row.h - height) / 2);
     }
 }
 
@@ -403,9 +583,9 @@ void Renderer::draw_osd(const GameSnapshot& snapshot) {
     SDL_Rect panel{10, 10, 760, 34};
     SDL_RenderFillRect(renderer_, &panel);
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
-    render_outlined_text(renderer_, osd_font_, buffer,
-                         SDL_Color{235, 245, 255, 255},
-                         SDL_Color{0, 0, 0, 255}, 18, 18);
+    draw_outlined(osd_font_, buffer,
+                  SDL_Color{235, 245, 255, 255},
+                  SDL_Color{0, 0, 0, 255}, 18, 18);
 }
 
 SDL_Color Renderer::parse_color(const std::string& value, SDL_Color fallback) {

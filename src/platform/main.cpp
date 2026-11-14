@@ -24,6 +24,7 @@
 #include "InputHandler.hpp"
 #include "LuaLoader.hpp"
 #include "Renderer.hpp"
+#include "SaveManager.hpp"
 
 namespace {
 
@@ -53,6 +54,7 @@ struct Options {
     std::filesystem::path root;
     std::filesystem::path config;
     std::filesystem::path games_dir;
+    std::filesystem::path save_dir;
     std::string screenshot;
     int width = 0;
     int height = 0;
@@ -60,6 +62,7 @@ struct Options {
     bool root_set = false;
     bool config_set = false;
     bool games_dir_set = false;
+    bool no_title = false;
 };
 
 Options parse_options(int argc, char** argv) {
@@ -68,10 +71,12 @@ Options parse_options(int argc, char** argv) {
     options.root = "romfs:/";
     options.config = "romfs:/runner_config.json";
     options.games_dir = "sdmc:/switch/artemis_runner/games";
+    options.save_dir = "sdmc:/switch/artemis_runner/saves";
 #else
     options.root = "build_temp/pc_unpacked";
     options.config = "cpp_runner/runner_config.json";
     options.games_dir = "games";
+    options.save_dir = "saves";
 #endif
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -84,6 +89,10 @@ Options parse_options(int argc, char** argv) {
         } else if (arg == "--games-dir" && i + 1 < argc) {
             options.games_dir = argv[++i];
             options.games_dir_set = true;
+        } else if (arg == "--save-dir" && i + 1 < argc) {
+            options.save_dir = argv[++i];
+        } else if (arg == "--no-title") {
+            options.no_title = true;
         } else if (arg == "--width" && i + 1 < argc) {
             options.width = std::atoi(argv[++i]);
         } else if (arg == "--height" && i + 1 < argc) {
@@ -306,48 +315,97 @@ int main(int argc, char** argv) {
         artc::Renderer renderer(window, config, assets);
         artc::AudioPlayer audio(config, assets);
         artc::InputHandler input;
-#ifdef __SWITCH__
-        if (debug_log) {
-            debug_log << "constructors done; starting engine\n";
-            debug_log.flush();
-        }
-#endif
-        engine.start();
-#ifdef __SWITCH__
-        if (debug_log) {
-            debug_log.flush();
-            debug_log.close();
-            debug_log.open("sdmc:/artemis_debug.log", std::ios::app);
-        }
-        if (debug_log) {
-            debug_log << "post-start\n";
-            debug_log.flush();
-        }
-#endif
-#ifdef __SWITCH__
-        if (debug_log) {
-            debug_log << "engine.start returned\n";
-            debug_log.flush();
-        }
-#endif
-#ifdef __SWITCH__
-        if (debug_log) {
-            const auto& state = engine.snapshot();
-            debug_log << "start script=" << state.script_name
-                      << " block=" << state.block_index
-                      << " text_size=" << state.text.size()
-                      << " finished=" << engine.finished()
-                      << " warnings=" << assets.warnings().size() << "\n";
-            debug_log.flush();
-        }
-#endif
+        artc::SaveManager saves(options.save_dir);
 
-        audio.play(engine.consume_audio());
+        enum class Screen { Title, Game, Save, Load, Pause };
+        Screen screen = (options.no_title || !options.screenshot.empty())
+                            ? Screen::Game
+                            : Screen::Title;
+        Screen menu_return = Screen::Game;
+        int title_cursor = 0;
+        int pause_cursor = 0;
+        int slot_cursor = 0;
+        bool save_mode = false;
+        std::string pending_thumbnail;
+        std::vector<artc::SaveSlotInfo> slots;
+
+        auto refresh_slots = [&] {
+            const auto list = saves.list();
+            slots.assign(list.begin(), list.end());
+        };
+        auto play_audio = [&] {
+            audio.play(engine.consume_audio());
+        };
+        auto start_new_game = [&] {
+            engine.start();
+            play_audio();
+            screen = Screen::Game;
+        };
+        auto load_slot = [&](int slot) -> bool {
+            auto state = saves.load(slot);
+            if (!state) return false;
+            std::string error;
+            if (!engine.import_state(*state, &error)) {
+                std::cerr << "[save] load failed: " << error << "\n";
+                return false;
+            }
+            play_audio();
+            screen = Screen::Game;
+            return true;
+        };
+        auto capture_for_save = [&] {
+            std::error_code ec;
+            std::filesystem::create_directories(options.save_dir, ec);
+            pending_thumbnail = (options.save_dir / ".pending.png").string();
+            if (!renderer.save_png(pending_thumbnail)) pending_thumbnail.clear();
+        };
+        auto open_save_menu = [&](Screen back) {
+            capture_for_save();
+            refresh_slots();
+            save_mode = true;
+            slot_cursor = 0;
+            menu_return = back;
+            screen = Screen::Save;
+        };
+        auto open_load_menu = [&](Screen back) {
+            refresh_slots();
+            save_mode = false;
+            slot_cursor = 0;
+            menu_return = back;
+            screen = Screen::Load;
+        };
+        auto save_selected = [&] {
+            if (slots.empty()) return;
+            const int slot = slots[slot_cursor].slot;
+            const auto state = engine.export_state();
+            std::string thumbnail;
+            if (!pending_thumbnail.empty()) {
+                std::error_code ec;
+                const auto target = saves.thumbnail_path(slot);
+                std::filesystem::copy_file(pending_thumbnail, target,
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                if (!ec) thumbnail = target.string();
+            }
+            if (saves.save(slot, state, thumbnail)) {
+                refresh_slots();
+                screen = Screen::Game;
+            }
+        };
+        auto stop_game_audio = [&] {
+            audio.play({artc::AudioCommand{artc::AudioKind::VoiceStop},
+                        artc::AudioCommand{artc::AudioKind::BgmStop}});
+        };
+
+        if (screen == Screen::Game) {
+            engine.start();
+            play_audio();
+        }
+
         bool screenshot_done = false;
         if (!options.screenshot.empty()) {
             for (int i = 0; i < options.steps; ++i) {
                 engine.step(artc::Action::Next);
-                audio.play(engine.consume_audio());
+                play_audio();
             }
             renderer.draw(engine.snapshot());
             if (!renderer.save_png(options.screenshot)) {
@@ -356,6 +414,14 @@ int main(int argc, char** argv) {
             renderer.present();
             screenshot_done = true;
         }
+
+        const std::vector<std::string> title_items = {
+            "はじめから", "つづきから", "ロード", "終了",
+        };
+        const std::vector<std::string> pause_items = {
+            "ゲームに戻る", "セーブ", "ロード", "タイトルへ", "終了",
+        };
+
         bool running = true;
         Uint32 last_skip = 0;
         while (running && !screenshot_done) {
@@ -370,28 +436,127 @@ int main(int argc, char** argv) {
                         renderer.toggle_debug();
                         continue;
                     }
-                    engine.step(action);
-                    audio.play(engine.consume_audio());
+
+                    if (screen == Screen::Title) {
+                        if (action == artc::Action::Menu) {
+                            running = false;
+                        } else if (action == artc::Action::Up ||
+                                   action == artc::Action::SelectUp) {
+                            title_cursor = (title_cursor + 3) % 4;
+                        } else if (action == artc::Action::Down ||
+                                   action == artc::Action::SelectDown) {
+                            title_cursor = (title_cursor + 1) % 4;
+                        } else if (action == artc::Action::Next ||
+                                   action == artc::Action::Confirm) {
+                            if (title_cursor == 0) {
+                                start_new_game();
+                            } else if (title_cursor == 1) {
+                                const int latest = saves.latest_slot();
+                                if (latest == 0 || !load_slot(latest)) start_new_game();
+                            } else if (title_cursor == 2) {
+                                open_load_menu(Screen::Title);
+                            } else {
+                                running = false;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (screen == Screen::Game) {
+                        if (action == artc::Action::Menu) {
+                            pause_cursor = 0;
+                            screen = Screen::Pause;
+                        } else if (action == artc::Action::QuickSave) {
+                            open_save_menu(Screen::Game);
+                        } else if (action == artc::Action::QuickLoad) {
+                            open_load_menu(Screen::Game);
+                        } else {
+                            engine.step(action);
+                            play_audio();
+                        }
+                        continue;
+                    }
+
+                    if (screen == Screen::Pause) {
+                        if (action == artc::Action::Menu) {
+                            screen = Screen::Game;
+                        } else if (action == artc::Action::Up ||
+                                   action == artc::Action::SelectUp) {
+                            pause_cursor = (pause_cursor + 4) % 5;
+                        } else if (action == artc::Action::Down ||
+                                   action == artc::Action::SelectDown) {
+                            pause_cursor = (pause_cursor + 1) % 5;
+                        } else if (action == artc::Action::Next ||
+                                   action == artc::Action::Confirm) {
+                            if (pause_cursor == 0) {
+                                screen = Screen::Game;
+                            } else if (pause_cursor == 1) {
+                                open_save_menu(Screen::Pause);
+                            } else if (pause_cursor == 2) {
+                                open_load_menu(Screen::Pause);
+                            } else if (pause_cursor == 3) {
+                                stop_game_audio();
+                                screen = Screen::Title;
+                                title_cursor = 0;
+                            } else {
+                                running = false;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (screen == Screen::Save || screen == Screen::Load) {
+                        if (action == artc::Action::Menu) {
+                            screen = menu_return;
+                        } else if (action == artc::Action::Up ||
+                                   action == artc::Action::SelectUp) {
+                            slot_cursor = (slot_cursor + artc::SaveManager::kSlotCount - 1) %
+                                          artc::SaveManager::kSlotCount;
+                        } else if (action == artc::Action::Down ||
+                                   action == artc::Action::SelectDown) {
+                            slot_cursor = (slot_cursor + 1) % artc::SaveManager::kSlotCount;
+                        } else if (action == artc::Action::Next ||
+                                   action == artc::Action::Confirm) {
+                            if (save_mode) {
+                                save_selected();
+                            } else if (!slots.empty()) {
+                                load_slot(slots[slot_cursor].slot);
+                            }
+                        }
+                        continue;
+                    }
                 }
             }
             if (!running) break;
 
-            if (input.skip_held()) {
-                const Uint32 now = SDL_GetTicks();
-                if (now - last_skip >= 80) {
-                    engine.step(artc::Action::Skip);
-                    audio.play(engine.consume_audio());
-                    last_skip = now;
+            if (screen == Screen::Game) {
+                if (input.skip_held()) {
+                    const Uint32 now = SDL_GetTicks();
+                    if (now - last_skip >= 80) {
+                        engine.step(artc::Action::Skip);
+                        play_audio();
+                        last_skip = now;
+                    }
                 }
-            }
-
-            audio.update();
-            renderer.draw(engine.snapshot());
-            renderer.present();
-            if (engine.finished()) {
+                audio.update();
+                renderer.draw(engine.snapshot());
+                renderer.present();
+                SDL_Delay(engine.finished() ? 16 : 8);
+            } else if (screen == Screen::Title) {
+                audio.update();
+                renderer.draw_title(title_items, title_cursor);
+                renderer.present();
+                SDL_Delay(16);
+            } else if (screen == Screen::Pause) {
+                audio.update();
+                renderer.draw_title(pause_items, pause_cursor);
+                renderer.present();
                 SDL_Delay(16);
             } else {
-                SDL_Delay(8);
+                audio.update();
+                renderer.draw_save_menu(slots, slot_cursor, save_mode);
+                renderer.present();
+                SDL_Delay(16);
             }
         }
         audio.shutdown();
