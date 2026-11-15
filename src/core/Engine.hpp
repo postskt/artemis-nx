@@ -28,6 +28,7 @@ enum class Action {
     Right,
     PageLeft,
     PageRight,
+    Pointer,
     Back,
     ToggleDebug,
     Menu,

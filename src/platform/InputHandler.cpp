@@ -101,13 +101,28 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                     break;
             }
             break;
+        case SDL_MOUSEMOTION:
+            pointer_x_ = event.motion.x;
+            pointer_y_ = event.motion.y;
+            break;
         case SDL_MOUSEBUTTONDOWN:
-            if (event.button.button == SDL_BUTTON_LEFT) actions.push_back(Action::Next);
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                pointer_x_ = event.button.x;
+                pointer_y_ = event.button.y;
+                actions.push_back(Action::Pointer);
+            }
             if (event.button.button == SDL_BUTTON_RIGHT) actions.push_back(Action::ToggleUi);
             break;
-        case SDL_FINGERDOWN:
-            actions.push_back(Action::Next);
+        case SDL_FINGERDOWN: {
+            int window_width = 1024;
+            int window_height = 768;
+            SDL_Window* window = SDL_GetWindowFromID(event.tfinger.windowID);
+            if (window) SDL_GetWindowSize(window, &window_width, &window_height);
+            pointer_x_ = static_cast<int>(event.tfinger.x * window_width);
+            pointer_y_ = static_cast<int>(event.tfinger.y * window_height);
+            actions.push_back(Action::Pointer);
             break;
+        }
         case SDL_CONTROLLERDEVICEADDED:
             open_controller(event.cdevice.which);
             break;

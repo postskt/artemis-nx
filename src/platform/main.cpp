@@ -468,6 +468,39 @@ int main(int argc, char** argv) {
             audio.play({artc::AudioCommand{artc::AudioKind::VoiceStop},
                         artc::AudioCommand{artc::AudioKind::BgmStop}});
         };
+        auto pointer_logical = [&](int& x, int& y) {
+            return renderer.window_to_logical(input.pointer_x(), input.pointer_y(), x, y);
+        };
+        auto title_button_at = [&](int x, int y) {
+            static const int boxes[][4] = {
+                {736, 329, 150, 48}, {736, 393, 207, 48}, {736, 456, 137, 49},
+                {736, 520, 168, 48}, {736, 583, 177, 48}, {687, 647, 302, 94},
+            };
+            for (int i = 0; i < 6; ++i) {
+                if (x >= boxes[i][0] && y >= boxes[i][1] &&
+                    x < boxes[i][0] + boxes[i][2] && y < boxes[i][1] + boxes[i][3]) {
+                    return i;
+                }
+            }
+            return -1;
+        };
+        bool running = true;
+        auto title_activate = [&](int index) {
+            if (index == 0) {
+                start_new_game();
+            } else if (index == 1) {
+                const int latest = saves.latest_slot();
+                if (latest == 0 || !load_slot(latest)) start_new_game();
+            } else if (index == 2) {
+                open_load_menu(Screen::Title);
+            } else if (index == 3) {
+                open_settings(Screen::Title);
+            } else if (index == 4) {
+                open_gallery(Screen::Title);
+            } else {
+                running = false;
+            }
+        };
 
         bool screenshot_done = false;
         if (!options.ui_screenshot.empty()) {
@@ -516,7 +549,6 @@ int main(int argc, char** argv) {
             "ゲームに戻る", "セーブ", "ロード", "設定", "CG鑑賞", "タイトルへ", "終了",
         };
 
-        bool running = true;
         Uint32 last_skip = 0;
         while (running && !screenshot_done) {
             SDL_Event event;
@@ -534,6 +566,16 @@ int main(int argc, char** argv) {
                     if (screen == Screen::Title) {
                         if (action == artc::Action::Menu) {
                             running = false;
+                        } else if (action == artc::Action::Pointer) {
+                            int x = 0;
+                            int y = 0;
+                            if (pointer_logical(x, y)) {
+                                const int hit = title_button_at(x, y);
+                                if (hit >= 0) {
+                                    title_cursor = hit;
+                                    title_activate(hit);
+                                }
+                            }
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
                             title_cursor = (title_cursor + 5) % 6;
@@ -542,20 +584,7 @@ int main(int argc, char** argv) {
                             title_cursor = (title_cursor + 1) % 6;
                         } else if (action == artc::Action::Next ||
                                    action == artc::Action::Confirm) {
-                            if (title_cursor == 0) {
-                                start_new_game();
-                            } else if (title_cursor == 1) {
-                                const int latest = saves.latest_slot();
-                                if (latest == 0 || !load_slot(latest)) start_new_game();
-                            } else if (title_cursor == 2) {
-                                open_load_menu(Screen::Title);
-                            } else if (title_cursor == 3) {
-                                open_settings(Screen::Title);
-                            } else if (title_cursor == 4) {
-                                open_gallery(Screen::Title);
-                            } else {
-                                running = false;
-                            }
+                            title_activate(title_cursor);
                         }
                         continue;
                     }
@@ -570,6 +599,10 @@ int main(int argc, char** argv) {
                             open_load_menu(Screen::Game);
                         } else if (action == artc::Action::Back) {
                             restore_history();
+                        } else if (action == artc::Action::Pointer) {
+                            remember_state();
+                            engine.step(artc::Action::Next);
+                            play_audio();
                         } else {
                             if (action == artc::Action::Next ||
                                 action == artc::Action::Confirm ||
@@ -653,6 +686,27 @@ int main(int argc, char** argv) {
                     if (screen == Screen::Gallery) {
                         if (action == artc::Action::Menu || action == artc::Action::Back) {
                             screen = menu_return;
+                        } else if (action == artc::Action::Pointer) {
+                            int x = 0;
+                            int y = 0;
+                            if (pointer_logical(x, y)) {
+                                if (x >= 751 && x < 860 && y >= 71 && y < 104) {
+                                    screen = menu_return;
+                                } else {
+                                    for (int i = 0; i < static_cast<int>(gallery_items.size()) && i < 20; ++i) {
+                                        const int cx = 30 + (i % 4) * 245;
+                                        const int cy = 123 + (i / 4) * 127;
+                                        if (x >= cx && y >= cy && x < cx + 230 && y < cy + 119) {
+                                            gallery_cursor = i;
+                                            if (gallery_items[i].unlocked) {
+                                                cg_view_path = gallery_items[i].full;
+                                                screen = Screen::CGView;
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
                             if (!gallery_items.empty()) {
@@ -696,6 +750,27 @@ int main(int argc, char** argv) {
                     if (screen == Screen::Save || screen == Screen::Load) {
                         if (action == artc::Action::Menu || action == artc::Action::Back) {
                             screen = menu_return;
+                        } else if (action == artc::Action::Pointer) {
+                            int x = 0;
+                            int y = 0;
+                            if (pointer_logical(x, y)) {
+                                bool handled = false;
+                                for (int i = 0; i < 12 && i < static_cast<int>(slots.size()); ++i) {
+                                    const int cx = 36 + (i % 3) * 319;
+                                    const int cy = 145 + (i / 3) * 136;
+                                    if (x >= cx && y >= cy && x < cx + 316 && y < cy + 132) {
+                                        slot_cursor = i;
+                                        handled = true;
+                                        break;
+                                    }
+                                }
+                                if (!handled && x >= 886 && x < 965 && y >= 727 && y < 760) {
+                                    screen = menu_return;
+                                } else if (!handled && save_mode &&
+                                           x >= 516 && x < 572 && y >= 726 && y < 760) {
+                                    save_selected();
+                                }
+                            }
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
                             slot_cursor = (slot_cursor + artc::SaveManager::kSlotCount - 1) %

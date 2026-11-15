@@ -272,8 +272,30 @@ void Renderer::present() {
     SDL_RenderPresent(renderer_);
 }
 
-bool Renderer::save_png(const std::string& path) {
-    const int width = config_.logical_width();
+bool Renderer::window_to_logical(int window_x, int window_y,
+                                 int& logical_x, int& logical_y) const {
+    int window_width = 0;
+    int window_height = 0;
+    SDL_GetWindowSize(window_, &window_width, &window_height);
+    const int logical_width = config_.logical_width();
+    const int logical_height = config_.logical_height();
+    if (window_width <= 0 || window_height <= 0) return false;
+    const double scale = std::min(static_cast<double>(window_width) / logical_width,
+                                  static_cast<double>(window_height) / logical_height);
+    const double view_width = logical_width * scale;
+    const double view_height = logical_height * scale;
+    const double offset_x = (window_width - view_width) * 0.5;
+    const double offset_y = (window_height - view_height) * 0.5;
+    if (window_x < offset_x || window_y < offset_y ||
+        window_x >= offset_x + view_width || window_y >= offset_y + view_height) {
+        return false;
+    }
+    logical_x = static_cast<int>((window_x - offset_x) / scale);
+    logical_y = static_cast<int>((window_y - offset_y) / scale);
+    return true;
+}
+
+bool Renderer::save_png(const std::string& path) {    const int width = config_.logical_width();
     const int height = config_.logical_height();
     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(
         0, width, height, 32, SDL_PIXELFORMAT_ARGB8888);

@@ -51,6 +51,7 @@ public:
     void draw(const GameSnapshot& snapshot);
     void present();
     bool save_png(const std::string& path);
+    bool window_to_logical(int window_x, int window_y, int& logical_x, int& logical_y) const;
     void draw_title(const std::vector<std::string>& items, int cursor,
                     bool continue_enabled = true);
     void draw_pause_menu(const std::vector<std::string>& items, int cursor);
