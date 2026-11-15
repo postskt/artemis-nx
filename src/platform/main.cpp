@@ -351,7 +351,9 @@ int main(int argc, char** argv) {
                           settings.voice_volume * settings.master_volume);
         renderer.set_user_preferences(settings.effect,
                                       static_cast<Uint8>(settings.window_alpha * 255.0f));
+#ifndef __SWITCH__
         if (settings.fullscreen) SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+#endif
 
         enum class Screen { Brand, Title, Game, Save, Load, Pause, Settings, Gallery, CGView };
         Screen screen = (options.no_title || !options.screenshot.empty())
@@ -418,9 +420,16 @@ int main(int argc, char** argv) {
                               settings.voice_volume * settings.master_volume);
             renderer.set_user_preferences(settings.effect,
                                           static_cast<Uint8>(settings.window_alpha * 255.0f));
+#ifdef __SWITCH__
+            // Horizon always presents the application full-screen.  Toggling
+            // SDL_WINDOW_FULLSCREEN_DESKTOP here makes Switch's scaled
+            // surface jump/resize, so leave the native window untouched.
+            settings.fullscreen = true;
+#else
             SDL_SetWindowFullscreen(window, settings.fullscreen
                                                  ? SDL_WINDOW_FULLSCREEN_DESKTOP
                                                  : 0);
+#endif
         };
         auto remember_state = [&] {
             if (engine.snapshot().text.empty()) return;
@@ -976,12 +985,14 @@ int main(int argc, char** argv) {
                                     const int cell_w = gallery_tab == 0 ? 245 : 490;
                                     const int cell_h = gallery_tab == 0 ? 127 : 126;
                                     const int rows = gallery_tab == 0 ? 5 : 4;
+                                    const int thumb_w = gallery_tab == 0 ? 230 : 475;
+                                    const int thumb_h = gallery_tab == 0 ? 119 : 149;
                                     for (int i = 0; i < static_cast<int>(gallery_items.size()) &&
                                                     i < columns * rows; ++i) {
                                         const int cx = 30 + (i % columns) * cell_w;
                                         const int cy = 123 + (i / columns) * cell_h;
-                                        if (x >= cx && y >= cy && x < cx + 230 &&
-                                            y < cy + 119) {
+                                        if (x >= cx && y >= cy && x < cx + thumb_w &&
+                                            y < cy + thumb_h) {
                                             gallery_cursor = i;
                                             if (gallery_items[i].unlocked) {
                                                 cg_view_path = gallery_items[i].full;

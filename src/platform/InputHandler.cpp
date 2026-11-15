@@ -6,10 +6,12 @@
 namespace artc {
 
 InputHandler::InputHandler() {
+#ifndef __SWITCH__
     SDL_GameControllerEventState(SDL_ENABLE);
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         if (SDL_IsGameController(i)) open_controller(i);
     }
+#endif
 }
 
 InputHandler::~InputHandler() {
@@ -160,12 +162,15 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
             break;
         }
         case SDL_CONTROLLERDEVICEADDED:
+#ifndef __SWITCH__
             open_controller(event.cdevice.which);
+#endif
             break;
         case SDL_CONTROLLERDEVICEREMOVED:
             close_controller(event.cdevice.which);
             break;
         case SDL_CONTROLLERBUTTONDOWN:
+#ifndef __SWITCH__
             switch (event.cbutton.button) {
                 case SDL_CONTROLLER_BUTTON_A:
                     actions.push_back(Action::Confirm);
@@ -206,8 +211,10 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                 default:
                     break;
             }
+#endif
             break;
         case SDL_CONTROLLERAXISMOTION:
+#ifndef __SWITCH__
             if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
                 if (event.caxis.value < -16000 && !axis_up_latched_) {
                     actions.push_back(Action::SelectUp);
@@ -220,6 +227,7 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                     axis_down_latched_ = false;
                 }
             }
+#endif
             break;
         default:
             break;
