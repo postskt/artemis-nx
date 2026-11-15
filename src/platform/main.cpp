@@ -797,7 +797,8 @@ int main(int argc, char** argv) {
                     }
 
                     if (screen == Screen::Pause) {
-                        if (action == artc::Action::Menu) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back ||
+                            action == artc::Action::ToggleUi) {
                             screen = Screen::Game;
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
@@ -1052,7 +1053,8 @@ int main(int argc, char** argv) {
                     }
 
                     if (screen == Screen::Save || screen == Screen::Load) {
-                        if (action == artc::Action::Menu || action == artc::Action::Back) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back ||
+                            action == artc::Action::ToggleUi) {
                             screen = menu_return;
                         } else if (action == artc::Action::Pointer) {
                             int x = 0;
