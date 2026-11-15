@@ -18,6 +18,8 @@ public:
     ~AudioPlayer();
 
     void play(const std::vector<AudioCommand>& commands);
+    void play_background(const std::string& relative);
+    void stop_background();
     void update();
     void shutdown();
     void set_volumes(float bgm, float se, float voice);

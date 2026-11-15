@@ -57,6 +57,19 @@ void AudioPlayer::shutdown() {    if (!initialized_) return;
     available_ = false;
 }
 
+void AudioPlayer::play_background(const std::string& relative) {
+    AudioCommand command;
+    command.kind = AudioKind::Bgm;
+    command.path = relative;
+    command.loop = true;
+    command.transient = false;
+    play({command});
+}
+
+void AudioPlayer::stop_background() {
+    stop_music();
+}
+
 void AudioPlayer::play(const std::vector<AudioCommand>& commands) {
     if (!available_) return;
     for (const auto& command : commands) {

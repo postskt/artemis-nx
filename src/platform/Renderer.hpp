@@ -62,7 +62,9 @@ public:
     void draw_pause_menu(const std::vector<std::string>& items, int cursor);
     void draw_save_menu(const std::vector<SaveSlotInfo>& slots, int cursor, bool save_mode);
     void draw_settings(const UserSettings& settings, int cursor, int page);
-    void draw_gallery(const std::vector<GalleryItem>& items, int cursor);
+    void draw_gallery(const std::vector<GalleryItem>& items, int cursor, int tab = 0,
+                      int bgm_cursor = 0,
+                      const std::vector<std::string>& bgm_tracks = {});
     void draw_cg_view(const std::string& relative_path);
     void draw_brand(const std::string& relative_path, bool white);
     void toggle_debug() { debug_ = !debug_; }

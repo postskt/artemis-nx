@@ -43,7 +43,43 @@ void InputHandler::close_controller(SDL_JoystickID instance_id) {
     }
 }
 
+std::vector<Action> InputHandler::poll() {
+    std::vector<Action> actions;
+#ifdef __SWITCH__
+    if (!pad_initialized_) {
+        padInitializeDefault(&pad_);
+        pad_initialized_ = true;
+    }
+    padUpdate(&pad_);
+    const u64 down = padGetButtonsDown(&pad_);
+    if (down & HidNpadButton_A) actions.push_back(Action::Confirm);
+    if (down & HidNpadButton_B) actions.push_back(Action::ToggleUi);
+    if (down & HidNpadButton_X) actions.push_back(Action::QuickSave);
+    if (down & HidNpadButton_Y) actions.push_back(Action::QuickLoad);
+    if (down & HidNpadButton_Plus) actions.push_back(Action::Menu);
+    if (down & HidNpadButton_Minus) actions.push_back(Action::ToggleUi);
+    if (down & HidNpadButton_AnyUp) actions.push_back(Action::SelectUp);
+    if (down & HidNpadButton_AnyDown) actions.push_back(Action::SelectDown);
+    if (down & HidNpadButton_AnyLeft) actions.push_back(Action::Left);
+    if (down & HidNpadButton_AnyRight) actions.push_back(Action::Right);
+    if (down & HidNpadButton_L) actions.push_back(Action::PageLeft);
+    if (down & HidNpadButton_R) actions.push_back(Action::PageRight);
+#endif
+    if (!actions.empty()) {
+        pending_.insert(pending_.end(), actions.begin(), actions.end());
+        SDL_Event event{};
+        event.type = SDL_USEREVENT;
+        SDL_PushEvent(&event);
+    }
+    return actions;
+}
+
 std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
+    if (!pending_.empty()) {
+        std::vector<Action> actions(pending_.begin(), pending_.end());
+        pending_.clear();
+        return actions;
+    }
     std::vector<Action> actions;
     switch (event.type) {
         case SDL_QUIT:
@@ -192,6 +228,12 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
 }
 
 bool InputHandler::skip_held() const {
+#ifdef __SWITCH__
+    if (pad_initialized_ &&
+        (padGetButtons(&pad_) & (HidNpadButton_ZR | HidNpadButton_R))) {
+        return true;
+    }
+#endif
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     if (keys && (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL])) return true;
     for (auto* controller : controllers_) {

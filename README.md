@@ -7,6 +7,12 @@ This repository contains **engine and tooling source only**. It does not
 contain any commercial game assets, scripts, audio, fonts, encryption keys or
 NSP/NRO files. To use it, provide your own legally obtained game data.
 
+## Packaging notes
+
+Real-hardware NSP packaging (NPDM SVC whitelist, application type, no-ticket
+layout, UTF-8 title encoding) is documented in
+[docs/SWITCH_NSP_PACKAGING.md](docs/SWITCH_NSP_PACKAGING.md).
+
 ## Architecture
 
 ```text

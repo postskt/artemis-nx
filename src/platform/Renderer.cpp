@@ -357,10 +357,16 @@ void Renderer::draw_sprite(const std::string& relative, int x, int y, int w, int
 
 void Renderer::draw_title(const std::vector<std::string>& items, int cursor,
                           bool continue_enabled) {
+    static bool logged = false;
+    if (!logged) {
+        std::fprintf(stderr, "[title] begin\n");
+        logged = true;
+    }
     SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
     const std::string base = config_.resolve_magic(":ui/");
     draw_sprite(base + "title/bg", 0, 0, 1024, 768);
+    std::fprintf(stderr, "[title] bg done\n");
 
     struct Button {
         const char* asset;
@@ -380,9 +386,11 @@ void Renderer::draw_title(const std::vector<std::string>& items, int cursor,
     for (int i = 0; i < 6 && i < static_cast<int>(items.size()); ++i) {
         int source_y = i == cursor ? (i == 5 ? 94 : 48) : 0;
         if (i == 1 && !continue_enabled) source_y = 96;
+        std::fprintf(stderr, "[title] button %d %s\n", i, buttons[i].asset);
         draw_sprite(base + buttons[i].asset, buttons[i].x, buttons[i].y,
                     buttons[i].w, buttons[i].h, source_y);
     }
+    std::fprintf(stderr, "[title] done\n");
 }
 
 void Renderer::draw_pause_menu(const std::vector<std::string>& items, int cursor) {
@@ -462,6 +470,13 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
     SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
     const std::string base = config_.resolve_magic(":ui/");
+    // The source pin is 20x22.  Drawing it at 9x24 stretched it into a
+    // half-circle; keep its native aspect and center it on the 24px track.
+    auto draw_slider = [&](int x, int y, float value) {
+        draw_sprite(base + "conf/bt_slider", x, y, 248, 24, 0);
+        const int pin_x = x + static_cast<int>(std::clamp(value, 0.0f, 1.0f) * 228.0f) - 10;
+        draw_sprite(base + "conf/pin", pin_x, y - 1, 20, 22);
+    };
     if (page <= 1) {
         draw_sprite(base + "conf/bg01", 0, 0, 1024, 768);
         draw_sprite(base + "conf/bt_system", 213, 60, 207, 47, 94);
@@ -471,18 +486,10 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_window", 241, 137, 153, 23, settings.fullscreen ? 0 : 46);
         draw_sprite(base + "conf/bt_on", 241, 207, 63, 23, settings.effect ? 46 : 0);
         draw_sprite(base + "conf/bt_off", 413, 207, 70, 23, settings.effect ? 0 : 46);
-        draw_sprite(base + "conf/bt_slider", 269, 280, 248, 24);
-        draw_sprite(base + "conf/pin", 269 + static_cast<int>(settings.sysse_volume * 228),
-                    280, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 375, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>((settings.text_speed / 3.0f) * 228),
-                    375, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 450, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>((settings.auto_speed / 3.0f) * 228),
-                    450, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 525, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.window_alpha * 228),
-                    525, 9, 24);
+        draw_slider(269, 280, settings.sysse_volume);
+        draw_slider(196, 375, settings.text_speed / 3.0f);
+        draw_slider(196, 450, settings.auto_speed / 3.0f);
+        draw_slider(196, 525, settings.window_alpha);
         draw_sprite(base + "conf/bt_on", 743, 371, 63, 23, settings.text_color ? 46 : 0);
         draw_sprite(base + "conf/bt_off", 865, 371, 70, 23, settings.text_color ? 0 : 46);
         draw_sprite(base + "conf/bt_on", 743, 446, 63, 23, settings.skip_unread ? 46 : 0);
@@ -493,18 +500,12 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_system", 213, 60, 207, 47);
         draw_sprite(base + "conf/bt_sound", 421, 60, 203, 47, 94);
         draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47);
-        draw_sprite(base + "conf/bt_slider", 196, 201, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.master_volume * 228), 201, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 301, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.bgm_volume * 228), 301, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 401, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.se_volume * 228), 401, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 501, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.voice_volume * 228), 501, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 196, 601, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.sysse_volume * 228), 601, 9, 24);
-        draw_sprite(base + "conf/bt_slider", 698, 201, 248, 24);
-        draw_sprite(base + "conf/pin", 698 + 228, 201, 9, 24);
+        draw_slider(196, 201, settings.master_volume);
+        draw_slider(196, 301, settings.bgm_volume);
+        draw_slider(196, 401, settings.se_volume);
+        draw_slider(196, 501, settings.voice_volume);
+        draw_slider(196, 601, settings.sysse_volume);
+        draw_slider(698, 201, settings.bgm_voice_fade ? 1.0f : 0.0f);
         draw_sprite(base + "conf/bt_on", 743, 297, 63, 23, settings.bgm_voice_fade ? 46 : 0);
         draw_sprite(base + "conf/bt_off", 865, 297, 70, 23, settings.bgm_voice_fade ? 0 : 46);
         draw_sprite(base + "conf/bt_on", 743, 397, 63, 23, settings.voice_skip ? 46 : 0);
@@ -546,35 +547,78 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
     }
 }
 
-void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
+void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor, int tab,
+                            int bgm_cursor,
+                            const std::vector<std::string>& bgm_tracks) {
     SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
     const std::string base = config_.resolve_magic(":ui/");
     draw_sprite(base + "extra/bg", 0, 0, 1024, 768);
-    draw_sprite(base + "extra/bt_excg", 129, 62, 200, 47, 94);
-    draw_sprite(base + "extra/bt_exscene", 330, 62, 201, 47);
-    draw_sprite(base + "extra/bt_exbgm", 532, 62, 175, 47);
+
+    // Original SPECIAL screen: CG / SCENE / BGM tabs.  The selected tab uses
+    // the 94px source row in the three tab atlases.
+    draw_sprite(base + "extra/bt_excg", 129, 62, 200, 47, tab == 0 ? 94 : 0);
+    draw_sprite(base + "extra/bt_exscene", 330, 62, 201, 47, tab == 1 ? 94 : 0);
+    draw_sprite(base + "extra/bt_exbgm", 532, 62, 175, 47, tab == 2 ? 94 : 0);
     draw_sprite(base + "extra/bt_return", 751, 71, 109, 33);
-    static const int xs[] = {30, 275, 520, 765};
-    static const int ys[] = {123, 250, 377, 504, 631};
+
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-    for (int i = 0; i < static_cast<int>(items.size()) && i < 20; ++i) {
-        const int x = xs[i % 4];
-        const int y = ys[i / 4];
-        if (items[i].unlocked) {
-            if (SDL_Texture* thumb = textures_->get(path_of(assets_, items[i].thumb))) {
-                SDL_Rect dst{x + 5, y + 5, 220, 109};
-                SDL_RenderCopy(renderer_, thumb, nullptr, &dst);
+    if (tab == 0) {
+        static const int xs[] = {30, 275, 520, 765};
+        static const int ys[] = {123, 250, 377, 504, 631};
+        for (int i = 0; i < static_cast<int>(items.size()) && i < 20; ++i) {
+            const int x = xs[i % 4];
+            const int y = ys[i / 4];
+            if (items[i].unlocked) {
+                if (SDL_Texture* thumb = textures_->get(path_of(assets_, items[i].thumb))) {
+                    SDL_Rect dst{x + 5, y + 5, 220, 109};
+                    SDL_RenderCopy(renderer_, thumb, nullptr, &dst);
+                }
+            } else {
+                SDL_SetRenderDrawColor(renderer_, 205, 190, 170, 220);
+                SDL_Rect locked{x + 5, y + 5, 220, 109};
+                SDL_RenderFillRect(renderer_, &locked);
             }
-        } else {
-            SDL_SetRenderDrawColor(renderer_, 205, 190, 170, 220);
-            SDL_Rect locked{x + 5, y + 5, 220, 109};
-            SDL_RenderFillRect(renderer_, &locked);
+            draw_sprite(base + "extra/bt_thumb", x, y, 230, 119, i == cursor ? 119 : 0);
         }
-        draw_sprite(base + "extra/bt_thumb", x, y, 230, 119, i == cursor ? 119 : 0);
+    } else if (tab == 1) {
+        static const int xs[] = {30, 520};
+        static const int ys[] = {123, 249, 375, 501};
+        for (int i = 0; i < static_cast<int>(items.size()) && i < 8; ++i) {
+            const int x = xs[i % 2];
+            const int y = ys[i / 2];
+            if (items[i].unlocked) {
+                if (SDL_Texture* thumb = textures_->get(path_of(assets_, items[i].thumb))) {
+                    SDL_Rect dst{x + 5, y + 5, 465, 139};
+                    SDL_RenderCopy(renderer_, thumb, nullptr, &dst);
+                }
+            } else {
+                SDL_SetRenderDrawColor(renderer_, 205, 190, 170, 220);
+                SDL_Rect locked{x + 5, y + 5, 465, 139};
+                SDL_RenderFillRect(renderer_, &locked);
+            }
+            draw_sprite(base + "extra/bt_thumb_scene", x, y, 475, 149,
+                        i == cursor ? 149 : 0);
+        }
+    } else {
+        const int count = bgm_tracks.empty() ? 10 : static_cast<int>(bgm_tracks.size());
+        for (int i = 0; i < count && i < 9; ++i) {
+            char asset[64]{};
+            std::snprintf(asset, sizeof(asset), "extra/bt_bgm%02d", i + 1);
+            draw_sprite(base + asset, 315, 160 + i * 55, 395, 45,
+                        i == bgm_cursor ? 45 : 0);
+        }
+        // Selection marker; the original atlas only contains the label art.
+        if (count > 0) {
+            const int y = 160 + std::clamp(bgm_cursor, 0, count - 1) * 55;
+            SDL_SetRenderDrawColor(renderer_, 255, 209, 120, 64);
+            SDL_Rect highlight{305, y - 4, 415, 53};
+            SDL_RenderFillRect(renderer_, &highlight);
+        }
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
+
 
 void Renderer::draw_brand(const std::string& relative_path, bool white) {
     SDL_SetRenderDrawColor(renderer_, white ? 255 : 0, white ? 255 : 0, white ? 255 : 0, 255);

@@ -146,6 +146,7 @@ int run_selector(SDL_Window* window, const std::vector<artc::GameEntry>& games,
     int cursor = 0;
     bool selected = false;
     while (!selected) {
+        input.poll();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             for (artc::Action action : input.handle_event(event)) {
@@ -336,6 +337,15 @@ int main(int argc, char** argv) {
             for (auto& item : gallery_items) item.unlocked = gallery.is_unlocked(item);
         };
         refresh_gallery();
+        std::vector<std::string> bgm_tracks;
+        for (int i = 1; i <= 10; ++i) {
+            char name[64]{};
+            std::snprintf(name, sizeof(name), "sound/ogg/bgm/bgm%02d_a.ogg", i);
+            if (!assets.exists(name)) {
+                std::snprintf(name, sizeof(name), "sound/ogg/bgm/bgm%02d.ogg", i);
+            }
+            if (assets.exists(name)) bgm_tracks.push_back(name);
+        }
         audio.set_volumes(settings.bgm_volume * settings.master_volume,
                           settings.se_volume * settings.master_volume,
                           settings.voice_volume * settings.master_volume);
@@ -356,6 +366,8 @@ int main(int argc, char** argv) {
         int settings_cursor = 0;
         int settings_page = 1;
         int gallery_cursor = 0;
+        int gallery_tab = 0;
+        int bgm_cursor = 0;
         std::string cg_view_path;
         bool save_mode = false;
         std::string pending_thumbnail;
@@ -446,6 +458,8 @@ int main(int argc, char** argv) {
         auto open_gallery = [&](Screen back) {
             refresh_gallery();
             gallery_cursor = 0;
+            gallery_tab = 0;
+            bgm_cursor = 0;
             menu_return = back;
             screen = Screen::Gallery;
         };
@@ -599,7 +613,7 @@ int main(int argc, char** argv) {
             } else if (options.ui_screen == "settings") {
                 renderer.draw_settings(settings, 0, 1);
             } else if (options.ui_screen == "gallery") {
-                renderer.draw_gallery(gallery_items, 0);
+                renderer.draw_gallery(gallery_items, 0, 0, 0, bgm_tracks);
             } else {
                 renderer.draw_title(std::vector<std::string>(6), 0);
             }
@@ -629,14 +643,15 @@ int main(int argc, char** argv) {
         }
 
         const std::vector<std::string> title_items = {
-            "はじめから", "つづきから", "ロード", "設定", "CG鑑賞", "終了",
+            "Start", "Continue", "Load", "Settings", "CG Gallery", "Exit",
         };
         const std::vector<std::string> pause_items = {
-            "ゲームに戻る", "セーブ", "ロード", "設定", "CG鑑賞", "タイトルへ", "終了",
+            "Resume", "Save", "Load", "Settings", "CG Gallery", "Title", "Exit",
         };
 
         Uint32 last_skip = 0;
         while (running && !screenshot_done) {
+            input.poll();
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 for (artc::Action action : input.handle_event(event)) {
@@ -806,7 +821,8 @@ int main(int argc, char** argv) {
 
                     if (screen == Screen::Settings) {
                         const int item_count = settings_page == 1 ? 8 : (settings_page == 2 ? 6 : 1);
-                        if (action == artc::Action::Menu || action == artc::Action::Back) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back ||
+                            action == artc::Action::ToggleUi) {
                             save_current_settings();
                             screen = menu_return;
                         } else if (action == artc::Action::PageLeft) {
@@ -927,19 +943,45 @@ int main(int argc, char** argv) {
                     }
 
                     if (screen == Screen::Gallery) {
-                        if (action == artc::Action::Menu || action == artc::Action::Back) {
+                        if (action == artc::Action::Menu || action == artc::Action::Back ||
+                            action == artc::Action::ToggleUi) {
                             screen = menu_return;
+                        } else if (action == artc::Action::PageLeft) {
+                            gallery_tab = (gallery_tab + 2) % 3;
+                            gallery_cursor = 0;
+                        } else if (action == artc::Action::PageRight) {
+                            gallery_tab = (gallery_tab + 1) % 3;
+                            gallery_cursor = 0;
                         } else if (action == artc::Action::Pointer) {
                             int x = 0;
                             int y = 0;
                             if (pointer_logical(x, y)) {
                                 if (x >= 751 && x < 860 && y >= 71 && y < 104) {
                                     screen = menu_return;
+                                } else if (y >= 62 && y < 110 && x >= 129 && x < 329) {
+                                    gallery_tab = 0;
+                                } else if (y >= 62 && y < 110 && x >= 330 && x < 531) {
+                                    gallery_tab = 1;
+                                } else if (y >= 62 && y < 110 && x >= 532 && x < 707) {
+                                    gallery_tab = 2;
+                                } else if (gallery_tab == 2) {
+                                    const int row = (y - 160) / 55;
+                                    if (y >= 160 && row >= 0 && row < 9 &&
+                                        row < static_cast<int>(bgm_tracks.size())) {
+                                        bgm_cursor = row;
+                                        audio.play_background(bgm_tracks[bgm_cursor]);
+                                    }
                                 } else {
-                                    for (int i = 0; i < static_cast<int>(gallery_items.size()) && i < 20; ++i) {
-                                        const int cx = 30 + (i % 4) * 245;
-                                        const int cy = 123 + (i / 4) * 127;
-                                        if (x >= cx && y >= cy && x < cx + 230 && y < cy + 119) {
+                                    const int columns = gallery_tab == 0 ? 4 : 2;
+                                    const int cell_w = gallery_tab == 0 ? 245 : 490;
+                                    const int cell_h = gallery_tab == 0 ? 127 : 126;
+                                    const int rows = gallery_tab == 0 ? 5 : 4;
+                                    for (int i = 0; i < static_cast<int>(gallery_items.size()) &&
+                                                    i < columns * rows; ++i) {
+                                        const int cx = 30 + (i % columns) * cell_w;
+                                        const int cy = 123 + (i / columns) * cell_h;
+                                        if (x >= cx && y >= cy && x < cx + 230 &&
+                                            y < cy + 119) {
                                             gallery_cursor = i;
                                             if (gallery_items[i].unlocked) {
                                                 cg_view_path = gallery_items[i].full;
@@ -950,33 +992,40 @@ int main(int argc, char** argv) {
                                     }
                                 }
                             }
-                        } else if (action == artc::Action::Up ||
-                                   action == artc::Action::SelectUp) {
-                            if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 4) %
-                                                 static_cast<int>(gallery_items.size());
+                        } else if (gallery_tab == 2) {
+                            if ((action == artc::Action::Up ||
+                                 action == artc::Action::SelectUp) && !bgm_tracks.empty()) {
+                                bgm_cursor = (bgm_cursor + static_cast<int>(bgm_tracks.size()) - 1) %
+                                             static_cast<int>(bgm_tracks.size());
+                            } else if ((action == artc::Action::Down ||
+                                        action == artc::Action::SelectDown) && !bgm_tracks.empty()) {
+                                bgm_cursor = (bgm_cursor + 1) %
+                                             static_cast<int>(bgm_tracks.size());
+                            } else if ((action == artc::Action::Next ||
+                                        action == artc::Action::Confirm) && !bgm_tracks.empty()) {
+                                audio.play_background(bgm_tracks[bgm_cursor]);
                             }
-                        } else if (action == artc::Action::Down ||
-                                   action == artc::Action::SelectDown) {
+                        } else {
+                            const int cells = gallery_tab == 0 ? 4 : 2;
+                            const int max_items = gallery_tab == 0 ? 20 : 8;
+                            const int count = std::min(static_cast<int>(gallery_items.size()), max_items);
                             if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + 4) %
-                                                 static_cast<int>(gallery_items.size());
-                            }
-                        } else if (action == artc::Action::Left) {
-                            if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + static_cast<int>(gallery_items.size()) - 1) %
-                                                 static_cast<int>(gallery_items.size());
-                            }
-                        } else if (action == artc::Action::Right) {
-                            if (!gallery_items.empty()) {
-                                gallery_cursor = (gallery_cursor + 1) %
-                                                 static_cast<int>(gallery_items.size());
-                            }
-                        } else if (action == artc::Action::Next ||
-                                   action == artc::Action::Confirm) {
-                            if (!gallery_items.empty() && gallery_items[gallery_cursor].unlocked) {
-                                cg_view_path = gallery_items[gallery_cursor].full;
-                                screen = Screen::CGView;
+                                if (action == artc::Action::Up || action == artc::Action::SelectUp) {
+                                    gallery_cursor = (gallery_cursor - cells + count) % count;
+                                } else if (action == artc::Action::Down ||
+                                           action == artc::Action::SelectDown) {
+                                    gallery_cursor = (gallery_cursor + cells) % count;
+                                } else if (action == artc::Action::Left) {
+                                    gallery_cursor = (gallery_cursor - 1 + count) % count;
+                                } else if (action == artc::Action::Right) {
+                                    gallery_cursor = (gallery_cursor + 1) % count;
+                                } else if (action == artc::Action::Next ||
+                                           action == artc::Action::Confirm) {
+                                    if (gallery_items[gallery_cursor].unlocked) {
+                                        cg_view_path = gallery_items[gallery_cursor].full;
+                                        screen = Screen::CGView;
+                                    }
+                                }
                             }
                         }
                         continue;
@@ -984,6 +1033,7 @@ int main(int argc, char** argv) {
 
                     if (screen == Screen::CGView) {
                         if (action == artc::Action::Menu || action == artc::Action::Back ||
+                            action == artc::Action::ToggleUi ||
                             action == artc::Action::Next || action == artc::Action::Confirm) {
                             screen = Screen::Gallery;
                         }
@@ -1140,7 +1190,7 @@ int main(int argc, char** argv) {
                 SDL_Delay(16);
             } else if (screen == Screen::Gallery) {
                 audio.update();
-                renderer.draw_gallery(gallery_items, gallery_cursor);
+                renderer.draw_gallery(gallery_items, gallery_cursor, gallery_tab, bgm_cursor, bgm_tracks);
                 renderer.present();
                 SDL_Delay(16);
             } else if (screen == Screen::CGView) {
