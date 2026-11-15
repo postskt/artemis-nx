@@ -336,7 +336,11 @@ int main(int argc, char** argv) {
             for (auto& item : gallery_items) item.unlocked = gallery.is_unlocked(item);
         };
         refresh_gallery();
-        audio.set_volumes(settings.bgm_volume, settings.se_volume, settings.voice_volume);
+        audio.set_volumes(settings.bgm_volume * settings.master_volume,
+                          settings.se_volume * settings.master_volume,
+                          settings.voice_volume * settings.master_volume);
+        renderer.set_user_preferences(settings.effect,
+                                      static_cast<Uint8>(settings.window_alpha * 255.0f));
         if (settings.fullscreen) SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
         enum class Screen { Brand, Title, Game, Save, Load, Pause, Settings, Gallery, CGView };
@@ -345,8 +349,6 @@ int main(int argc, char** argv) {
                             : Screen::Brand;
         Screen menu_return = Screen::Game;
         int title_cursor = 0;
-        int last_title_click_index = -1;
-        Uint32 last_title_click_ms = 0;
         int pause_cursor = 0;
         int slot_cursor = 0;
         int settings_cursor = 0;
@@ -362,15 +364,46 @@ int main(int argc, char** argv) {
         Uint32 brand_start = SDL_GetTicks();
         bool brand_voice_played = false;
         int brand_stage = -1;
+        Screen previous_screen = screen;
+        Uint32 screen_changed_ms = SDL_GetTicks();
+        std::string last_revealed_text;
+        std::size_t reveal_chars = 0;
+        Uint32 reveal_tick = SDL_GetTicks();
+        auto utf8_length = [](const std::string& text) {
+            std::size_t count = 0;
+            for (std::size_t i = 0; i < text.size();) {
+                const unsigned char lead = static_cast<unsigned char>(text[i]);
+                std::size_t length = 1;
+                if ((lead >> 5) == 0x6) length = 2;
+                else if ((lead >> 4) == 0xE) length = 3;
+                else if ((lead >> 3) == 0x1E) length = 4;
+                i += std::min(length, text.size() - i);
+                ++count;
+            }
+            return count;
+        };
+        auto reset_text_reveal = [&] {
+            last_revealed_text.clear();
+            reveal_chars = 0;
+            reveal_tick = SDL_GetTicks();
+            renderer.set_text_reveal(static_cast<std::size_t>(-1));
+        };
 
         auto save_current_settings = [&] {
             settings.text_speed = std::max(0.5f, std::min(3.0f, settings.text_speed));
             settings.auto_speed = std::max(0.5f, std::min(3.0f, settings.auto_speed));
+            settings.master_volume = std::max(0.0f, std::min(1.0f, settings.master_volume));
             settings.bgm_volume = std::max(0.0f, std::min(1.0f, settings.bgm_volume));
             settings.se_volume = std::max(0.0f, std::min(1.0f, settings.se_volume));
             settings.voice_volume = std::max(0.0f, std::min(1.0f, settings.voice_volume));
+            settings.sysse_volume = std::max(0.0f, std::min(1.0f, settings.sysse_volume));
+            settings.window_alpha = std::max(0.0f, std::min(1.0f, settings.window_alpha));
             artc::save_settings(options.save_dir / "settings.json", settings);
-            audio.set_volumes(settings.bgm_volume, settings.se_volume, settings.voice_volume);
+            audio.set_volumes(settings.bgm_volume * settings.master_volume,
+                              settings.se_volume * settings.master_volume,
+                              settings.voice_volume * settings.master_volume);
+            renderer.set_user_preferences(settings.effect,
+                                          static_cast<Uint8>(settings.window_alpha * 255.0f));
             SDL_SetWindowFullscreen(window, settings.fullscreen
                                                  ? SDL_WINDOW_FULLSCREEN_DESKTOP
                                                  : 0);
@@ -380,6 +413,18 @@ int main(int argc, char** argv) {
             history.push_back(engine.export_state());
             constexpr std::size_t kHistoryLimit = 64;
             if (history.size() > kHistoryLimit) history.erase(history.begin());
+        };
+        auto advance_text = [&] {
+            const std::string& text = engine.snapshot().text;
+            const std::size_t total = utf8_length(text);
+            if (!text.empty() && reveal_chars < total) {
+                reveal_chars = total;
+                renderer.set_text_reveal(reveal_chars);
+                return;
+            }
+            remember_state();
+            engine.step(artc::Action::Next);
+            audio.play(engine.consume_audio());
         };
         auto restore_history = [&] {
             if (history.empty()) return;
@@ -427,6 +472,7 @@ int main(int argc, char** argv) {
             play_audio();
             history.clear();
             last_event_asset.clear();
+            reset_text_reveal();
             screen = Screen::Game;
         };
         auto load_slot = [&](int slot) -> bool {
@@ -441,6 +487,7 @@ int main(int argc, char** argv) {
             play_audio();
             history.clear();
             last_event_asset = engine.snapshot().background;
+            reset_text_reveal();
             screen = Screen::Game;
             return true;
         };
@@ -650,13 +697,7 @@ int main(int argc, char** argv) {
                                 const int hit = title_button_at(x, y);
                                 if (hit >= 0) {
                                     title_cursor = hit;
-                                    const Uint32 now = SDL_GetTicks();
-                                    if (hit == last_title_click_index &&
-                                        now - last_title_click_ms < 500) {
-                                        title_activate(hit);
-                                    }
-                                    last_title_click_index = hit;
-                                    last_title_click_ms = now;
+                                    title_activate(hit);
                                 }
                             }
                         } else if (action == artc::Action::Up ||
@@ -706,18 +747,17 @@ int main(int argc, char** argv) {
                             } else if (hit >= 0) {
                                 // auto/voice buttons are decorative until their systems exist
                             } else {
-                                remember_state();
-                                engine.step(artc::Action::Next);
-                                play_audio();
+                                advance_text();
                             }
                         } else {
                             if (action == artc::Action::Next ||
                                 action == artc::Action::Confirm ||
                                 action == artc::Action::Skip) {
-                                remember_state();
+                                advance_text();
+                            } else {
+                                engine.step(action);
+                                play_audio();
                             }
-                            engine.step(action);
-                            play_audio();
                         }
                         continue;
                     }
@@ -755,35 +795,121 @@ int main(int argc, char** argv) {
                     }
 
                     if (screen == Screen::Settings) {
+                        const int item_count = settings_page == 1 ? 8 : (settings_page == 2 ? 6 : 1);
                         if (action == artc::Action::Menu || action == artc::Action::Back) {
                             save_current_settings();
                             screen = menu_return;
                         } else if (action == artc::Action::PageLeft) {
                             settings_page = std::max(1, settings_page - 1);
+                            settings_cursor = 0;
                         } else if (action == artc::Action::PageRight) {
                             settings_page = std::min(3, settings_page + 1);
+                            settings_cursor = 0;
+                        } else if (action == artc::Action::Pointer) {
+                            int x = 0;
+                            int y = 0;
+                            if (pointer_logical(x, y)) {
+                                if (x >= 213 && x < 420 && y >= 60 && y < 108) {
+                                    settings_page = 1;
+                                    settings_cursor = 0;
+                                } else if (x >= 421 && x < 624 && y >= 60 && y < 108) {
+                                    settings_page = 2;
+                                    settings_cursor = 0;
+                                } else if (x >= 625 && x < 815 && y >= 60 && y < 108) {
+                                    settings_page = 3;
+                                    settings_cursor = 0;
+                                } else if (x >= 484 && x < 574 && y >= 726 && y < 760) {
+                                    settings = artc::UserSettings{};
+                                    save_current_settings();
+                                } else if (x >= 886 && x < 965 && y >= 727 && y < 760) {
+                                    save_current_settings();
+                                    screen = menu_return;
+                                } else if (x >= 733 && x < 833 && y >= 727 && y < 760) {
+                                    save_current_settings();
+                                    screen = Screen::Title;
+                                } else if (settings_page == 1) {
+                                    if (y >= 130 && y < 165) {
+                                        settings.fullscreen = x >= 400;
+                                        settings_cursor = 0;
+                                    } else if (y >= 195 && y < 235) {
+                                        settings.effect = x < 400;
+                                        settings_cursor = 1;
+                                    } else if (y >= 265 && y < 305) {
+                                        settings.sysse_volume = std::clamp((x - 269) / 228.0f, 0.0f, 1.0f);
+                                        settings_cursor = 2;
+                                    } else if (y >= 360 && y < 400 && x < 700) {
+                                        settings.text_speed = std::clamp((x - 196) / 228.0f, 0.0f, 1.0f) * 3.0f;
+                                        settings_cursor = 3;
+                                    } else if (y >= 435 && y < 475 && x < 700) {
+                                        settings.auto_speed = std::clamp((x - 196) / 228.0f, 0.0f, 1.0f) * 3.0f;
+                                        settings_cursor = 4;
+                                    } else if (y >= 510 && y < 550) {
+                                        settings.window_alpha = std::clamp((x - 196) / 228.0f, 0.0f, 1.0f);
+                                        settings_cursor = 5;
+                                    } else if (y >= 355 && y < 390 && x >= 700) {
+                                        settings.text_color = x < 850;
+                                        settings_cursor = 6;
+                                    } else if (y >= 430 && y < 465 && x >= 700) {
+                                        settings.skip_unread = x < 850;
+                                        settings_cursor = 7;
+                                    }
+                                } else if (settings_page == 2) {
+                                    const int row = (y - 190) / 72;
+                                    if (y >= 190 && y < 630 && x >= 196 && x < 424) {
+                                        const float value = std::clamp((x - 196) / 228.0f, 0.0f, 1.0f);
+                                        settings_cursor = std::clamp(row, 0, 4);
+                                        if (row == 0) settings.master_volume = value;
+                                        else if (row == 1) settings.bgm_volume = value;
+                                        else if (row == 2) settings.se_volume = value;
+                                        else if (row == 3) settings.voice_volume = value;
+                                        else if (row == 4) settings.sysse_volume = value;
+                                    }
+                                }
+                                save_current_settings();
+                            }
                         } else if (action == artc::Action::Up ||
                                    action == artc::Action::SelectUp) {
-                            settings_cursor = (settings_cursor + 5) % 6;
+                            settings_cursor = (settings_cursor + item_count - 1) % item_count;
                         } else if (action == artc::Action::Down ||
                                    action == artc::Action::SelectDown) {
-                            settings_cursor = (settings_cursor + 1) % 6;
+                            settings_cursor = (settings_cursor + 1) % item_count;
                         } else if (action == artc::Action::Left ||
-                                   action == artc::Action::Right) {
+                                   action == artc::Action::Right ||
+                                   action == artc::Action::Confirm ||
+                                   action == artc::Action::Next) {
                             const float direction =
                                 action == artc::Action::Left ? -1.0f : 1.0f;
-                            if (settings_cursor == 0) {
-                                settings.text_speed += direction * 0.1f;
-                            } else if (settings_cursor == 1) {
-                                settings.auto_speed += direction * 0.1f;
-                            } else if (settings_cursor == 2) {
-                                settings.bgm_volume += direction * 0.05f;
-                            } else if (settings_cursor == 3) {
-                                settings.se_volume += direction * 0.05f;
-                            } else if (settings_cursor == 4) {
-                                settings.voice_volume += direction * 0.05f;
-                            } else {
-                                settings.fullscreen = !settings.fullscreen;
+                            const bool activate = action == artc::Action::Confirm ||
+                                                  action == artc::Action::Next;
+                            if (settings_page == 1) {
+                                if (settings_cursor == 0) {
+                                    if (activate || action == artc::Action::Left ||
+                                        action == artc::Action::Right) settings.fullscreen = !settings.fullscreen;
+                                } else if (settings_cursor == 1) {
+                                    if (activate || action == artc::Action::Left ||
+                                        action == artc::Action::Right) settings.effect = !settings.effect;
+                                } else if (settings_cursor == 2) {
+                                    settings.sysse_volume += direction * 0.05f;
+                                } else if (settings_cursor == 3) {
+                                    settings.text_speed += direction * 0.1f;
+                                } else if (settings_cursor == 4) {
+                                    settings.auto_speed += direction * 0.1f;
+                                } else if (settings_cursor == 5) {
+                                    settings.window_alpha += direction * 0.05f;
+                                } else if (settings_cursor == 6) {
+                                    if (activate || action == artc::Action::Left ||
+                                        action == artc::Action::Right) settings.text_color = !settings.text_color;
+                                } else if (settings_cursor == 7) {
+                                    if (activate || action == artc::Action::Left ||
+                                        action == artc::Action::Right) settings.skip_unread = !settings.skip_unread;
+                                }
+                            } else if (settings_page == 2) {
+                                if (settings_cursor == 0) settings.master_volume += direction * 0.05f;
+                                else if (settings_cursor == 1) settings.bgm_volume += direction * 0.05f;
+                                else if (settings_cursor == 2) settings.se_volume += direction * 0.05f;
+                                else if (settings_cursor == 3) settings.voice_volume += direction * 0.05f;
+                                else if (settings_cursor == 4) settings.sysse_volume += direction * 0.05f;
+                                else if (settings_cursor == 5) settings.bgm_voice_fade = !settings.bgm_voice_fade;
                             }
                             save_current_settings();
                         }
@@ -899,6 +1025,15 @@ int main(int argc, char** argv) {
             }
             if (!running) break;
 
+            if (screen != previous_screen) {
+                previous_screen = screen;
+                screen_changed_ms = SDL_GetTicks();
+            }
+            {
+                const float age = static_cast<float>(SDL_GetTicks() - screen_changed_ms);
+                renderer.set_fade(std::max(0.0f, 1.0f - age / 220.0f));
+            }
+
             if (screen == Screen::Brand) {
                 const Uint32 elapsed = SDL_GetTicks() - brand_start;
                 const std::string ui = config.resolve_magic(":ui/");
@@ -938,9 +1073,7 @@ int main(int argc, char** argv) {
                 if (input.skip_held()) {
                     const Uint32 now = SDL_GetTicks();
                     if (now - last_skip >= 80) {
-                        remember_state();
-                        engine.step(artc::Action::Skip);
-                        play_audio();
+                        advance_text();
                         last_skip = now;
                     }
                 }
@@ -952,6 +1085,24 @@ int main(int argc, char** argv) {
                     refresh_gallery();
                     gallery.save(options.save_dir / "gallery.json");
                 }
+                const std::string& text = engine.snapshot().text;
+                if (text != last_revealed_text) {
+                    last_revealed_text = text;
+                    reveal_chars = 0;
+                    reveal_tick = SDL_GetTicks();
+                }
+                const std::size_t total_chars = utf8_length(text);
+                if (reveal_chars < total_chars) {
+                    const Uint32 now = SDL_GetTicks();
+                    const Uint32 elapsed = now - reveal_tick;
+                    if (elapsed > 0) {
+                        const std::size_t add = static_cast<std::size_t>(
+                            elapsed * 0.045f * settings.text_speed);
+                        reveal_chars = std::min(total_chars, reveal_chars + std::max<std::size_t>(1, add));
+                        reveal_tick = now;
+                    }
+                }
+                renderer.set_text_reveal(reveal_chars);
                 audio.update();
                 renderer.draw(engine.snapshot());
                 renderer.present();

@@ -47,17 +47,20 @@ The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
 - Native title screen and save/load slots (12 slots, thumbnail previews).
 - Startup brand sequence (game logo, iMel, Artemis, warning) with brand voice.
 - Title BGM (`bgm01` intro/loop) and title UI sound path.
-- Title buttons require a real hit; a single click selects, double-clicking the
-  same button activates it. Clicking empty title space does nothing.
+- Title buttons require a real hit; clicking empty title space does nothing.
+- Fade transition between title/game/menu screens.
+- In-game message bar with original dock/lock/paw and
+  SAVE/LOAD/Q.SAVE/Q.LOAD, auto/voice/skip/config/backlog/close hit targets.
+- Switch controller mapping: A confirm/advance, B toggle text, X quick save,
+  Y quick load, +/− menu, L/R page, ZR skip, D-pad navigation.
+- Settings controls are editable by keyboard, controller and pointer:
+  fullscreen, effects, system voice, text/auto speed, window opacity,
+  text color, unread skip, master/BGM/SE/voice/system volumes.
 - Title/save/config/gallery layouts follow the original `list_windows.tbl`
   coordinates and sprite-sheet frames 1:1.
 - Settings UI (text/auto speed, BGM/SE/voice volume, fullscreen) persisted as JSON.
 - CG gallery with 4x5 thumbnail grid and persistent unlock state.
 - Text history rollback with Backspace.
-- In-game message bar with original SAVE/LOAD/Q.SAVE/Q.LOAD,
-  auto/voice/skip/config/backlog/close icons and hit targets.
-- Switch controller mapping: A confirm/advance, B toggle text, X quick save,
-  Y quick load, +/− menu, L/R page, ZR skip, D-pad navigation.
 - `F5` opens the save menu, `F9` opens the load menu, `Esc` opens the in-game menu.
 - `Q` / `E` switch config pages; `--ui-screen` + `--ui-screenshot` render a
   single menu frame for layout verification.

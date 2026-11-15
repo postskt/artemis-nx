@@ -44,6 +44,16 @@ std::size_t utf8_char_len(unsigned char lead) {
     return 1;
 }
 
+std::string utf8_prefix(const std::string& text, std::size_t count) {
+    std::size_t offset = 0;
+    std::size_t seen = 0;
+    while (offset < text.size() && seen < count) {
+        offset += utf8_char_len(static_cast<unsigned char>(text[offset]));
+        ++seen;
+    }
+    return text.substr(0, std::min(offset, text.size()));
+}
+
 }  // namespace
 
 TextureCache::TextureCache(SDL_Renderer* renderer, std::size_t capacity)
@@ -161,7 +171,7 @@ SDL_Texture* Renderer::text_texture(TTF_Font* font, const std::string& text,
         if (outline_surface) SDL_FreeSurface(outline_surface);
         return nullptr;
     }
-    const int pad = 2;
+    const int pad = 1;
     SDL_Surface* composed = SDL_CreateRGBSurfaceWithFormat(
         0, fill_surface->w + pad * 2, fill_surface->h + pad * 2, 32,
         SDL_PIXELFORMAT_ARGB8888);
@@ -175,8 +185,8 @@ SDL_Texture* Renderer::text_texture(TTF_Font* font, const std::string& text,
     SDL_SetSurfaceBlendMode(composed, SDL_BLENDMODE_BLEND);
     if (outline_surface) {
         SDL_SetSurfaceBlendMode(outline_surface, SDL_BLENDMODE_BLEND);
-        const int offsets[][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2},
-                                  {-2, -2}, {2, 2}, {-2, 2}, {2, -2}};
+        const int offsets[][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1},
+                                  {-1, -1}, {1, 1}, {-1, 1}, {1, -1}};
         for (const auto& offset : offsets) {
             SDL_Rect dst{pad + offset[0], pad + offset[1], outline_surface->w,
                          outline_surface->h};
@@ -241,6 +251,7 @@ void Renderer::load_layout() {
     if (layout.contains("adv01") && layout["adv01"].is_object()) {
         const auto& adv = layout["adv01"];
         body_size_ = font_int(adv, "size", body_size_);
+        body_size_ = std::max(30, body_size_ - 3);
         body_left_ = font_int(adv, "left", body_left_);
         body_top_ = font_int(adv, "top", body_top_);
         body_width_ = font_int(adv, "width", body_width_);
@@ -250,6 +261,7 @@ void Renderer::load_layout() {
     if (layout.contains("name01") && layout["name01"].is_object()) {
         const auto& name = layout["name01"];
         name_size_ = font_int(name, "size", name_size_);
+        name_size_ = std::max(28, name_size_ - 2);
         name_left_ = font_int(name, "left", name_left_);
         name_top_ = font_int(name, "top", name_top_);
         name_color_ = font_color(name, "color", name_color_);
@@ -270,6 +282,14 @@ void Renderer::draw(const GameSnapshot& snapshot) {
 }
 
 void Renderer::present() {
+    if (fade_alpha_ > 0.001f) {
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        const Uint8 alpha = static_cast<Uint8>(std::clamp(fade_alpha_, 0.0f, 1.0f) * 255.0f);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, alpha);
+        SDL_Rect full{0, 0, config_.logical_width(), config_.logical_height()};
+        SDL_RenderFillRect(renderer_, &full);
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+    }
     SDL_RenderPresent(renderer_);
 }
 
@@ -438,10 +458,10 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47);
         draw_sprite(base + "conf/bt_screen", 413, 137, 139, 23, settings.fullscreen ? 23 : 0);
         draw_sprite(base + "conf/bt_window", 241, 137, 153, 23, settings.fullscreen ? 0 : 23);
-        draw_sprite(base + "conf/bt_on", 241, 207, 63, 23, 23);
-        draw_sprite(base + "conf/bt_off", 413, 207, 70, 23, 0);
+        draw_sprite(base + "conf/bt_on", 241, 207, 63, 23, settings.effect ? 23 : 0);
+        draw_sprite(base + "conf/bt_off", 413, 207, 70, 23, settings.effect ? 0 : 23);
         draw_sprite(base + "conf/bt_slider", 269, 280, 248, 24);
-        draw_sprite(base + "conf/pin", 269 + static_cast<int>(settings.voice_volume * 228),
+        draw_sprite(base + "conf/pin", 269 + static_cast<int>(settings.sysse_volume * 228),
                     280, 9, 24);
         draw_sprite(base + "conf/bt_slider", 196, 375, 248, 24);
         draw_sprite(base + "conf/pin", 196 + static_cast<int>((settings.text_speed / 3.0f) * 228),
@@ -450,10 +470,12 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/pin", 196 + static_cast<int>((settings.auto_speed / 3.0f) * 228),
                     450, 9, 24);
         draw_sprite(base + "conf/bt_slider", 196, 525, 248, 24);
-        draw_sprite(base + "conf/bt_on", 743, 371, 63, 23, 23);
-        draw_sprite(base + "conf/bt_off", 865, 371, 70, 23, 0);
-        draw_sprite(base + "conf/bt_on", 743, 446, 63, 23, 23);
-        draw_sprite(base + "conf/bt_off", 865, 446, 70, 23, 0);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.window_alpha * 228),
+                    525, 9, 24);
+        draw_sprite(base + "conf/bt_on", 743, 371, 63, 23, settings.text_color ? 23 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 371, 70, 23, settings.text_color ? 0 : 23);
+        draw_sprite(base + "conf/bt_on", 743, 446, 63, 23, settings.skip_unread ? 23 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 446, 70, 23, settings.skip_unread ? 0 : 23);
         draw_sprite(base + "conf/sample", 36, 589, 449, 106);
     } else if (page == 2) {
         draw_sprite(base + "conf/bg02", 0, 0, 1024, 768);
@@ -461,7 +483,7 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_sound", 421, 60, 203, 47, 94);
         draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47);
         draw_sprite(base + "conf/bt_slider", 196, 201, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.bgm_volume * 228), 201, 9, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.master_volume * 228), 201, 9, 24);
         draw_sprite(base + "conf/bt_slider", 196, 301, 248, 24);
         draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.bgm_volume * 228), 301, 9, 24);
         draw_sprite(base + "conf/bt_slider", 196, 401, 248, 24);
@@ -469,7 +491,7 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_slider", 196, 501, 248, 24);
         draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.voice_volume * 228), 501, 9, 24);
         draw_sprite(base + "conf/bt_slider", 196, 601, 248, 24);
-        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.voice_volume * 228), 601, 9, 24);
+        draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.sysse_volume * 228), 601, 9, 24);
         draw_sprite(base + "conf/bt_slider", 698, 201, 248, 24);
         draw_sprite(base + "conf/pin", 698 + 228, 201, 9, 24);
     } else {
@@ -600,6 +622,7 @@ void Renderer::draw_characters(const GameSnapshot& snapshot) {
 }
 
 void Renderer::draw_filters(const GameSnapshot& snapshot) {
+    if (!effects_enabled_) return;
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
     if (snapshot.color_tone.active) {
         SDL_SetRenderDrawColor(renderer_, snapshot.color_tone.r, snapshot.color_tone.g,
@@ -619,6 +642,8 @@ void Renderer::draw_filters(const GameSnapshot& snapshot) {
 
 void Renderer::draw_message_buttons() {
     const std::string base = config_.resolve_magic(":ui/");
+    draw_sprite(base + "mw/dockarea", 0, 718, 1024, 50);
+    draw_sprite(base + "mw/dock", 0, 736, 1024, 32);
     struct Icon {
         const char* asset;
         int x;
@@ -627,6 +652,7 @@ void Renderer::draw_message_buttons() {
         int h;
     };
     static const Icon icons[] = {
+        {"mw/bt_lock", 703, 741, 20, 19},
         {"mw/bt_save", 413, 743, 38, 17},
         {"mw/bt_load", 477, 744, 40, 15},
         {"mw/bt_qsave", 543, 743, 54, 17},
@@ -650,7 +676,9 @@ void Renderer::draw_textbox(const GameSnapshot& snapshot) {
         int height = 0;
         SDL_QueryTexture(textbox, nullptr, nullptr, &width, &height);
         SDL_Rect dst{0, config_.logical_height() - height, width, height};
+        SDL_SetTextureAlphaMod(textbox, textbox_alpha_);
         SDL_RenderCopy(renderer_, textbox, nullptr, &dst);
+        SDL_SetTextureAlphaMod(textbox, 255);
     } else {
         SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
@@ -664,8 +692,13 @@ void Renderer::draw_textbox(const GameSnapshot& snapshot) {
                       name_left_, name_top_);
     }
     if (!snapshot.text.empty()) {
-        draw_text(snapshot.text, body_font_, body_color_, body_outline_,
-                  body_left_, body_top_, body_width_, 52);
+        const std::string visible = text_reveal_ == static_cast<std::size_t>(-1)
+                                        ? snapshot.text
+                                        : utf8_prefix(snapshot.text, text_reveal_);
+        if (!visible.empty()) {
+            draw_text(visible, body_font_, body_color_, body_outline_,
+                      body_left_, body_top_, body_width_, body_size_ + 13);
+        }
     }
 }
 

@@ -50,6 +50,7 @@ public:
 
     void draw(const GameSnapshot& snapshot);
     void present();
+    void set_fade(float alpha) { fade_alpha_ = alpha; }
     bool save_png(const std::string& path);
     bool window_to_logical(int window_x, int window_y, int& logical_x, int& logical_y) const;
     void draw_title(const std::vector<std::string>& items, int cursor,
@@ -62,6 +63,11 @@ public:
     void draw_brand(const std::string& relative_path, bool white);
     void toggle_debug() { debug_ = !debug_; }
     bool debug() const { return debug_; }
+    void set_user_preferences(bool effects_enabled, Uint8 textbox_alpha) {
+        effects_enabled_ = effects_enabled;
+        textbox_alpha_ = textbox_alpha;
+    }
+    void set_text_reveal(std::size_t chars) { text_reveal_ = chars; }
     TextureCache& textures() { return *textures_; }
 
 private:
@@ -76,6 +82,10 @@ private:
     TTF_Font* menu_font_ = nullptr;
     TTF_Font* osd_font_ = nullptr;
     bool debug_ = false;
+    bool effects_enabled_ = true;
+    Uint8 textbox_alpha_ = 255;
+    float fade_alpha_ = 0.0f;
+    std::size_t text_reveal_ = static_cast<std::size_t>(-1);
 
     int body_size_ = 38;
     int body_left_ = 115;
