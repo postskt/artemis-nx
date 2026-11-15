@@ -251,7 +251,7 @@ void Renderer::load_layout() {
     if (layout.contains("adv01") && layout["adv01"].is_object()) {
         const auto& adv = layout["adv01"];
         body_size_ = font_int(adv, "size", body_size_);
-        body_size_ = std::max(30, body_size_ - 3);
+        body_size_ = std::max(28, body_size_ - 5);
         body_left_ = font_int(adv, "left", body_left_);
         body_top_ = font_int(adv, "top", body_top_);
         body_width_ = font_int(adv, "width", body_width_);
@@ -261,7 +261,7 @@ void Renderer::load_layout() {
     if (layout.contains("name01") && layout["name01"].is_object()) {
         const auto& name = layout["name01"];
         name_size_ = font_int(name, "size", name_size_);
-        name_size_ = std::max(28, name_size_ - 2);
+        name_size_ = std::max(26, name_size_ - 3);
         name_left_ = font_int(name, "left", name_left_);
         name_top_ = font_int(name, "top", name_top_);
         name_color_ = font_color(name, "color", name_color_);
@@ -282,6 +282,17 @@ void Renderer::draw(const GameSnapshot& snapshot) {
 }
 
 void Renderer::present() {
+    if (press_w_ > 0 && press_h_ > 0) {
+        const Uint32 age = SDL_GetTicks() - press_started_ms_;
+        if (age < 160) {
+            SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+            const Uint8 alpha = static_cast<Uint8>((1.0f - age / 160.0f) * 110.0f);
+            SDL_SetRenderDrawColor(renderer_, 255, 255, 255, alpha);
+            SDL_Rect press{press_x_, press_y_, press_w_, press_h_};
+            SDL_RenderFillRect(renderer_, &press);
+            SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+        }
+    }
     if (fade_alpha_ > 0.001f) {
         SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
         const Uint8 alpha = static_cast<Uint8>(std::clamp(fade_alpha_, 0.0f, 1.0f) * 255.0f);
@@ -456,10 +467,10 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_system", 213, 60, 207, 47, 94);
         draw_sprite(base + "conf/bt_sound", 421, 60, 203, 47);
         draw_sprite(base + "conf/bt_guide", 625, 60, 190, 47);
-        draw_sprite(base + "conf/bt_screen", 413, 137, 139, 23, settings.fullscreen ? 23 : 0);
-        draw_sprite(base + "conf/bt_window", 241, 137, 153, 23, settings.fullscreen ? 0 : 23);
-        draw_sprite(base + "conf/bt_on", 241, 207, 63, 23, settings.effect ? 23 : 0);
-        draw_sprite(base + "conf/bt_off", 413, 207, 70, 23, settings.effect ? 0 : 23);
+        draw_sprite(base + "conf/bt_screen", 413, 137, 139, 23, settings.fullscreen ? 46 : 0);
+        draw_sprite(base + "conf/bt_window", 241, 137, 153, 23, settings.fullscreen ? 0 : 46);
+        draw_sprite(base + "conf/bt_on", 241, 207, 63, 23, settings.effect ? 46 : 0);
+        draw_sprite(base + "conf/bt_off", 413, 207, 70, 23, settings.effect ? 0 : 46);
         draw_sprite(base + "conf/bt_slider", 269, 280, 248, 24);
         draw_sprite(base + "conf/pin", 269 + static_cast<int>(settings.sysse_volume * 228),
                     280, 9, 24);
@@ -472,10 +483,10 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/bt_slider", 196, 525, 248, 24);
         draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.window_alpha * 228),
                     525, 9, 24);
-        draw_sprite(base + "conf/bt_on", 743, 371, 63, 23, settings.text_color ? 23 : 0);
-        draw_sprite(base + "conf/bt_off", 865, 371, 70, 23, settings.text_color ? 0 : 23);
-        draw_sprite(base + "conf/bt_on", 743, 446, 63, 23, settings.skip_unread ? 23 : 0);
-        draw_sprite(base + "conf/bt_off", 865, 446, 70, 23, settings.skip_unread ? 0 : 23);
+        draw_sprite(base + "conf/bt_on", 743, 371, 63, 23, settings.text_color ? 46 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 371, 70, 23, settings.text_color ? 0 : 46);
+        draw_sprite(base + "conf/bt_on", 743, 446, 63, 23, settings.skip_unread ? 46 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 446, 70, 23, settings.skip_unread ? 0 : 46);
         draw_sprite(base + "conf/sample", 36, 589, 449, 106);
     } else if (page == 2) {
         draw_sprite(base + "conf/bg02", 0, 0, 1024, 768);
@@ -494,6 +505,17 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
         draw_sprite(base + "conf/pin", 196 + static_cast<int>(settings.sysse_volume * 228), 601, 9, 24);
         draw_sprite(base + "conf/bt_slider", 698, 201, 248, 24);
         draw_sprite(base + "conf/pin", 698 + 228, 201, 9, 24);
+        draw_sprite(base + "conf/bt_on", 743, 297, 63, 23, settings.bgm_voice_fade ? 46 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 297, 70, 23, settings.bgm_voice_fade ? 0 : 46);
+        draw_sprite(base + "conf/bt_on", 743, 397, 63, 23, settings.voice_skip ? 46 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 397, 70, 23, settings.voice_skip ? 0 : 46);
+        draw_sprite(base + "conf/bt_on", 743, 497, 63, 23, settings.auto_stop ? 46 : 0);
+        draw_sprite(base + "conf/bt_off", 865, 497, 70, 23, settings.auto_stop ? 0 : 46);
+        draw_sprite(base + "conf/bt_mute", 421, 223, 65, 20);
+        draw_sprite(base + "conf/bt_mute", 421, 323, 65, 20);
+        draw_sprite(base + "conf/bt_mute", 421, 423, 65, 20);
+        draw_sprite(base + "conf/bt_mute", 421, 523, 65, 20);
+        draw_sprite(base + "conf/bt_mute", 421, 623, 65, 20);
     } else {
         draw_sprite(base + "conf/bg03", 0, 0, 1024, 768);
         draw_sprite(base + "conf/bt_system", 213, 60, 207, 47);
@@ -504,6 +526,24 @@ void Renderer::draw_settings(const UserSettings& settings, int cursor, int page)
     draw_sprite(base + "conf/bt_exit", 624, 727, 56, 33);
     draw_sprite(base + "conf/bt_title", 733, 727, 100, 33);
     draw_sprite(base + "conf/bt_return", 886, 727, 79, 33);
+
+    int highlight_y = -1;
+    if (page == 1) {
+        static const int rows[] = {137, 207, 280, 375, 450, 525, 371, 446};
+        if (cursor >= 0 && cursor < 8) highlight_y = rows[cursor];
+    } else if (page == 2) {
+        static const int rows[] = {201, 301, 401, 501, 601, 201};
+        highlight_y = rows[std::clamp(cursor, 0, 5)];
+    }
+    if (highlight_y >= 0) {
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 255, 209, 120, 45);
+        SDL_Rect highlight{180, highlight_y - 7, 760, 38};
+        SDL_RenderFillRect(renderer_, &highlight);
+        SDL_SetRenderDrawColor(renderer_, 190, 96, 45, 150);
+        SDL_RenderDrawRect(renderer_, &highlight);
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+    }
 }
 
 void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
@@ -697,7 +737,7 @@ void Renderer::draw_textbox(const GameSnapshot& snapshot) {
                                         : utf8_prefix(snapshot.text, text_reveal_);
         if (!visible.empty()) {
             draw_text(visible, body_font_, body_color_, body_outline_,
-                      body_left_, body_top_, body_width_, body_size_ + 13);
+                      body_left_, body_top_, body_width_, body_size_ + 8);
         }
     }
 }

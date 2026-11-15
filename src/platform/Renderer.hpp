@@ -51,6 +51,10 @@ public:
     void draw(const GameSnapshot& snapshot);
     void present();
     void set_fade(float alpha) { fade_alpha_ = alpha; }
+    void begin_press(int x, int y, int w, int h) {
+        press_x_ = x; press_y_ = y; press_w_ = w; press_h_ = h;
+        press_started_ms_ = SDL_GetTicks();
+    }
     bool save_png(const std::string& path);
     bool window_to_logical(int window_x, int window_y, int& logical_x, int& logical_y) const;
     void draw_title(const std::vector<std::string>& items, int cursor,
@@ -85,6 +89,11 @@ private:
     bool effects_enabled_ = true;
     Uint8 textbox_alpha_ = 255;
     float fade_alpha_ = 0.0f;
+    int press_x_ = 0;
+    int press_y_ = 0;
+    int press_w_ = 0;
+    int press_h_ = 0;
+    Uint32 press_started_ms_ = 0;
     std::size_t text_reveal_ = static_cast<std::size_t>(-1);
 
     int body_size_ = 38;

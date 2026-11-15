@@ -349,6 +349,8 @@ int main(int argc, char** argv) {
                             : Screen::Brand;
         Screen menu_return = Screen::Game;
         int title_cursor = 0;
+        int pending_title_action = -1;
+        Uint32 pending_title_at = 0;
         int pause_cursor = 0;
         int slot_cursor = 0;
         int settings_cursor = 0;
@@ -696,8 +698,16 @@ int main(int argc, char** argv) {
                             if (pointer_logical(x, y)) {
                                 const int hit = title_button_at(x, y);
                                 if (hit >= 0) {
+                                    static const int boxes[][4] = {
+                                        {736, 329, 150, 48}, {736, 393, 207, 48},
+                                        {736, 456, 137, 49}, {736, 520, 168, 48},
+                                        {736, 583, 177, 48}, {687, 647, 302, 94},
+                                    };
+                                    renderer.begin_press(boxes[hit][0], boxes[hit][1],
+                                                         boxes[hit][2], boxes[hit][3]);
                                     title_cursor = hit;
-                                    title_activate(hit);
+                                    pending_title_action = hit;
+                                    pending_title_at = SDL_GetTicks() + 140;
                                 }
                             }
                         } else if (action == artc::Action::Up ||
@@ -1024,6 +1034,12 @@ int main(int argc, char** argv) {
                 }
             }
             if (!running) break;
+
+            if (pending_title_action >= 0 && SDL_GetTicks() >= pending_title_at) {
+                const int action = pending_title_action;
+                pending_title_action = -1;
+                title_activate(action);
+            }
 
             if (screen != previous_screen) {
                 previous_screen = screen;
