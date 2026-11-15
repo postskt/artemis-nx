@@ -59,6 +59,7 @@ public:
     void draw_settings(const UserSettings& settings, int cursor, int page);
     void draw_gallery(const std::vector<GalleryItem>& items, int cursor);
     void draw_cg_view(const std::string& relative_path);
+    void draw_brand(const std::string& relative_path, bool white);
     void toggle_debug() { debug_ = !debug_; }
     bool debug() const { return debug_; }
     TextureCache& textures() { return *textures_; }

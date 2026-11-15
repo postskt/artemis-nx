@@ -45,6 +45,10 @@ The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
   `Mix_HookMusicFinished`.
 - Controller/touch/keyboard input and a multi-game launcher.
 - Native title screen and save/load slots (12 slots, thumbnail previews).
+- Startup brand sequence (game logo, iMel, Artemis, warning) with brand voice.
+- Title BGM (`bgm01` intro/loop) and title UI sound path.
+- Title buttons require a real hit; a single click selects, double-clicking the
+  same button activates it. Clicking empty title space does nothing.
 - Title/save/config/gallery layouts follow the original `list_windows.tbl`
   coordinates and sprite-sheet frames 1:1.
 - Settings UI (text/auto speed, BGM/SE/voice volume, fullscreen) persisted as JSON.

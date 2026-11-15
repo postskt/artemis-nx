@@ -339,12 +339,14 @@ int main(int argc, char** argv) {
         audio.set_volumes(settings.bgm_volume, settings.se_volume, settings.voice_volume);
         if (settings.fullscreen) SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
-        enum class Screen { Title, Game, Save, Load, Pause, Settings, Gallery, CGView };
+        enum class Screen { Brand, Title, Game, Save, Load, Pause, Settings, Gallery, CGView };
         Screen screen = (options.no_title || !options.screenshot.empty())
                             ? Screen::Game
-                            : Screen::Title;
+                            : Screen::Brand;
         Screen menu_return = Screen::Game;
         int title_cursor = 0;
+        int last_title_click_index = -1;
+        Uint32 last_title_click_ms = 0;
         int pause_cursor = 0;
         int slot_cursor = 0;
         int settings_cursor = 0;
@@ -357,6 +359,9 @@ int main(int argc, char** argv) {
         std::vector<nlohmann::json> history;
         std::string last_event_asset;
         bool gallery_dirty = false;
+        Uint32 brand_start = SDL_GetTicks();
+        bool brand_voice_played = false;
+        int brand_stage = -1;
 
         auto save_current_settings = [&] {
             settings.text_speed = std::max(0.5f, std::min(3.0f, settings.text_speed));
@@ -405,7 +410,19 @@ int main(int argc, char** argv) {
         auto play_audio = [&] {
             audio.play(engine.consume_audio());
         };
+        auto play_title_bgm = [&] {
+            const artc::BgmEntry* entry = config.bgm("bgm01");
+            if (!entry) return;
+            artc::AudioCommand command;
+            command.kind = artc::AudioKind::Bgm;
+            const std::string bgm_dir = config.resolve_magic(":bgm/");
+            command.path = bgm_dir + entry->intro;
+            command.next_path = bgm_dir + entry->loop;
+            command.loop = true;
+            audio.play({command});
+        };
         auto start_new_game = [&] {
+            audio.play({artc::AudioCommand{artc::AudioKind::BgmStop}});
             engine.start();
             play_audio();
             history.clear();
@@ -420,6 +437,7 @@ int main(int argc, char** argv) {
                 std::cerr << "[save] load failed: " << error << "\n";
                 return false;
             }
+            audio.play({artc::AudioCommand{artc::AudioKind::BgmStop}});
             play_audio();
             history.clear();
             last_event_asset = engine.snapshot().background;
@@ -563,6 +581,46 @@ int main(int argc, char** argv) {
                         continue;
                     }
 
+                    if (screen == Screen::Brand) {
+                        const Uint32 elapsed = SDL_GetTicks() - brand_start;
+                        const std::string ui = config.resolve_magic(":ui/");
+                        const std::string cg = config.resolve_magic(":cg/");
+                        if (elapsed < 1200) {
+                            renderer.draw_brand("", true);
+                            brand_stage = 0;
+                        } else if (elapsed < 3500) {
+                            if (!brand_voice_played) {
+                                artc::AudioCommand voice;
+                                voice.kind = artc::AudioKind::Bgm;
+                                voice.path = "sound/ogg/sysse/vo/sys_aki_brand.ogg";
+                                voice.channel = 5;
+                                audio.play({voice});
+                                brand_voice_played = true;
+                            }
+                            renderer.draw_brand(cg + "logo", true);
+                            brand_stage = 1;
+                        } else if (elapsed < 5000) {
+                            renderer.draw_brand(ui + "logo02", true);
+                            brand_stage = 2;
+                        } else if (elapsed < 6500) {
+                            renderer.draw_brand(ui + "logo01", true);
+                            brand_stage = 3;
+                        } else if (elapsed < 8500) {
+                            renderer.draw_brand(ui + "sys_warning_bg", false);
+                            brand_stage = 4;
+                        } else {
+                            screen = Screen::Title;
+                            title_cursor = 0;
+                            play_title_bgm();
+                        }
+                        if (screen == Screen::Brand) {
+                            audio.update();
+                            renderer.present();
+                            SDL_Delay(16);
+                        }
+                        continue;
+                    }
+
                     if (screen == Screen::Title) {
                         if (action == artc::Action::Menu) {
                             running = false;
@@ -573,7 +631,13 @@ int main(int argc, char** argv) {
                                 const int hit = title_button_at(x, y);
                                 if (hit >= 0) {
                                     title_cursor = hit;
-                                    title_activate(hit);
+                                    const Uint32 now = SDL_GetTicks();
+                                    if (hit == last_title_click_index &&
+                                        now - last_title_click_ms < 500) {
+                                        title_activate(hit);
+                                    }
+                                    last_title_click_index = hit;
+                                    last_title_click_ms = now;
                                 }
                             }
                         } else if (action == artc::Action::Up ||
@@ -792,7 +856,42 @@ int main(int argc, char** argv) {
             }
             if (!running) break;
 
-            if (screen == Screen::Game) {
+            if (screen == Screen::Brand) {
+                const Uint32 elapsed = SDL_GetTicks() - brand_start;
+                const std::string ui = config.resolve_magic(":ui/");
+                const std::string cg = config.resolve_magic(":cg/");
+                if (elapsed < 1200) {
+                    renderer.draw_brand("", true);
+                    brand_stage = 0;
+                } else if (elapsed < 3500) {
+                    if (!brand_voice_played) {
+                        artc::AudioCommand voice;
+                        voice.kind = artc::AudioKind::Bgm;
+                        voice.path = "sound/ogg/sysse/vo/sys_aki_brand.ogg";
+                        voice.channel = 5;
+                        audio.play({voice});
+                        brand_voice_played = true;
+                    }
+                    renderer.draw_brand(cg + "logo", true);
+                    brand_stage = 1;
+                } else if (elapsed < 5000) {
+                    renderer.draw_brand(ui + "logo02", true);
+                    brand_stage = 2;
+                } else if (elapsed < 6500) {
+                    renderer.draw_brand(ui + "logo01", true);
+                    brand_stage = 3;
+                } else if (elapsed < 8500) {
+                    renderer.draw_brand(ui + "sys_warning_bg", false);
+                    brand_stage = 4;
+                } else {
+                    screen = Screen::Title;
+                    title_cursor = 0;
+                    play_title_bgm();
+                }
+                audio.update();
+                if (screen == Screen::Brand) renderer.present();
+                SDL_Delay(16);
+            } else if (screen == Screen::Game) {
                 if (input.skip_held()) {
                     const Uint32 now = SDL_GetTicks();
                     if (now - last_skip >= 80) {

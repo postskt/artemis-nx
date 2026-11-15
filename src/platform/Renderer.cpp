@@ -513,6 +513,29 @@ void Renderer::draw_gallery(const std::vector<GalleryItem>& items, int cursor) {
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 }
 
+void Renderer::draw_brand(const std::string& relative_path, bool white) {
+    SDL_SetRenderDrawColor(renderer_, white ? 255 : 0, white ? 255 : 0, white ? 255 : 0, 255);
+    SDL_RenderClear(renderer_);
+    if (relative_path.empty()) return;
+    std::string path = relative_path;
+    if (path.size() < 4 || path.substr(path.size() - 4) != ".png") path += ".png";
+    if (SDL_Texture* image = textures_->get(path_of(assets_, path))) {
+        int width = 0;
+        int height = 0;
+        SDL_QueryTexture(image, nullptr, nullptr, &width, &height);
+        const int logical_width = config_.logical_width();
+        const int logical_height = config_.logical_height();
+        if (width >= logical_width * 3 / 4 || height >= logical_height * 3 / 4) {
+            SDL_Rect dst{0, 0, logical_width, logical_height};
+            SDL_RenderCopy(renderer_, image, nullptr, &dst);
+        } else {
+            SDL_Rect dst{(logical_width - width) / 2, (logical_height - height) / 2,
+                         width, height};
+            SDL_RenderCopy(renderer_, image, nullptr, &dst);
+        }
+    }
+}
+
 void Renderer::draw_cg_view(const std::string& relative_path) {
     SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
