@@ -54,6 +54,10 @@ The core has no SDL dependency. It emits a `GameSnapshot` and a one-shot
 - Settings UI (text/auto speed, BGM/SE/voice volume, fullscreen) persisted as JSON.
 - CG gallery with 4x5 thumbnail grid and persistent unlock state.
 - Text history rollback with Backspace.
+- In-game message bar with original SAVE/LOAD/Q.SAVE/Q.LOAD,
+  auto/voice/skip/config/backlog/close icons and hit targets.
+- Switch controller mapping: A confirm/advance, B toggle text, X quick save,
+  Y quick load, +/− menu, L/R page, ZR skip, D-pad navigation.
 - `F5` opens the save menu, `F9` opens the load menu, `Esc` opens the in-game menu.
 - `Q` / `E` switch config pages; `--ui-screen` + `--ui-screenshot` render a
   single menu frame for layout verification.

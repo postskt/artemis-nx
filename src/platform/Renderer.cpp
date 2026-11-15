@@ -264,6 +264,7 @@ void Renderer::draw(const GameSnapshot& snapshot) {
     draw_characters(snapshot);
     draw_filters(snapshot);
     if (snapshot.textbox_visible) draw_textbox(snapshot);
+    if (snapshot.textbox_visible) draw_message_buttons();
     if (snapshot.select.active) draw_select(snapshot);
     if (debug_) draw_osd(snapshot);
 }
@@ -614,6 +615,32 @@ void Renderer::draw_filters(const GameSnapshot& snapshot) {
         SDL_RenderFillRect(renderer_, &full);
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+}
+
+void Renderer::draw_message_buttons() {
+    const std::string base = config_.resolve_magic(":ui/");
+    struct Icon {
+        const char* asset;
+        int x;
+        int y;
+        int w;
+        int h;
+    };
+    static const Icon icons[] = {
+        {"mw/bt_save", 413, 743, 38, 17},
+        {"mw/bt_load", 477, 744, 40, 15},
+        {"mw/bt_qsave", 543, 743, 54, 17},
+        {"mw/bt_qload", 622, 744, 56, 15},
+        {"mw/bt_auto", 745, 743, 13, 17},
+        {"mw/bt_voice", 785, 742, 21, 19},
+        {"mw/bt_skip", 833, 743, 16, 17},
+        {"mw/bt_config", 876, 742, 17, 19},
+        {"mw/bt_backlog", 920, 743, 15, 17},
+        {"mw/bt_textwindow", 962, 743, 15, 17},
+    };
+    for (const auto& icon : icons) {
+        draw_sprite(base + icon.asset, icon.x, icon.y, icon.w, icon.h);
+    }
 }
 
 void Renderer::draw_textbox(const GameSnapshot& snapshot) {

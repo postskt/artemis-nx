@@ -94,6 +94,7 @@ private:
     void draw_characters(const GameSnapshot& snapshot);
     void draw_filters(const GameSnapshot& snapshot);
     void draw_textbox(const GameSnapshot& snapshot);
+    void draw_message_buttons();
     void draw_select(const GameSnapshot& snapshot);
     void draw_osd(const GameSnapshot& snapshot);
 

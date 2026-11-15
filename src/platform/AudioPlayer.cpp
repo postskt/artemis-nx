@@ -131,7 +131,9 @@ void AudioPlayer::play_bgm(const AudioCommand& command) {
     next_music_ = command.next_path;
     music_finished_.store(false);
     Mix_HookMusicFinished(&AudioPlayer::music_finished_callback);
-    const int loops = command.next_path.empty() ? -1 : 0;
+    const int loops = command.next_path.empty()
+                          ? (command.loop ? -1 : 0)
+                          : 0;
     if (Mix_PlayMusic(music_, loops) < 0) {
         warn(std::string("cannot play BGM: ") + Mix_GetError());
     }

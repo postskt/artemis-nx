@@ -502,6 +502,25 @@ int main(int argc, char** argv) {
             }
             return -1;
         };
+        auto message_button_at = [&](int x, int y) {
+            static const char* names[] = {
+                "save", "load", "qsave", "qload", "auto", "voice", "skip", "config", "backlog", "close",
+            };
+            static const int boxes[][4] = {
+                {413, 743, 38, 17}, {477, 744, 40, 15}, {543, 743, 54, 17},
+                {622, 744, 56, 15}, {745, 743, 13, 17}, {785, 742, 21, 19},
+                {833, 743, 16, 17}, {876, 742, 17, 19}, {920, 743, 15, 17},
+                {962, 743, 15, 17},
+            };
+            for (int i = 0; i < 10; ++i) {
+                if (x >= boxes[i][0] && y >= boxes[i][1] &&
+                    x < boxes[i][0] + boxes[i][2] && y < boxes[i][1] + boxes[i][3]) {
+                    (void)names;
+                    return i;
+                }
+            }
+            return -1;
+        };
         bool running = true;
         auto title_activate = [&](int index) {
             if (index == 0) {
@@ -664,9 +683,33 @@ int main(int argc, char** argv) {
                         } else if (action == artc::Action::Back) {
                             restore_history();
                         } else if (action == artc::Action::Pointer) {
-                            remember_state();
-                            engine.step(artc::Action::Next);
-                            play_audio();
+                            int px = 0;
+                            int py = 0;
+                            const int hit = pointer_logical(px, py) ? message_button_at(px, py) : -1;
+                            if (hit == 0) {
+                                open_save_menu(Screen::Game);
+                            } else if (hit == 1) {
+                                open_load_menu(Screen::Game);
+                            } else if (hit == 2) {
+                                open_save_menu(Screen::Game);
+                            } else if (hit == 3) {
+                                open_load_menu(Screen::Game);
+                            } else if (hit == 7) {
+                                open_settings(Screen::Game);
+                            } else if (hit == 9) {
+                                engine.step(artc::Action::ToggleUi);
+                            } else if (hit == 8) {
+                                restore_history();
+                            } else if (hit == 6) {
+                                engine.step(artc::Action::Skip);
+                                play_audio();
+                            } else if (hit >= 0) {
+                                // auto/voice buttons are decorative until their systems exist
+                            } else {
+                                remember_state();
+                                engine.step(artc::Action::Next);
+                                play_audio();
+                            }
                         } else {
                             if (action == artc::Action::Next ||
                                 action == artc::Action::Confirm ||

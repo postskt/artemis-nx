@@ -132,14 +132,22 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
         case SDL_CONTROLLERBUTTONDOWN:
             switch (event.cbutton.button) {
                 case SDL_CONTROLLER_BUTTON_A:
+                    actions.push_back(Action::Confirm);
+                    break;
                 case SDL_CONTROLLER_BUTTON_B:
-                    actions.push_back(Action::Next);
+                    actions.push_back(Action::ToggleUi);
+                    break;
+                case SDL_CONTROLLER_BUTTON_X:
+                    actions.push_back(Action::QuickSave);
+                    break;
+                case SDL_CONTROLLER_BUTTON_Y:
+                    actions.push_back(Action::QuickLoad);
                     break;
                 case SDL_CONTROLLER_BUTTON_BACK:
                     actions.push_back(Action::Menu);
                     break;
                 case SDL_CONTROLLER_BUTTON_START:
-                    actions.push_back(Action::ToggleDebug);
+                    actions.push_back(Action::Menu);
                     break;
                 case SDL_CONTROLLER_BUTTON_DPAD_UP:
                     actions.push_back(Action::SelectUp);
@@ -157,7 +165,7 @@ std::vector<Action> InputHandler::handle_event(const SDL_Event& event) {
                     actions.push_back(Action::PageLeft);
                     break;
                 case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
-                    actions.push_back(Action::Skip);
+                    actions.push_back(Action::PageRight);
                     break;
                 default:
                     break;
@@ -188,7 +196,8 @@ bool InputHandler::skip_held() const {
     if (keys && (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL])) return true;
     for (auto* controller : controllers_) {
         if (controller &&
-            SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) {
+            (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) ||
+             SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000)) {
             return true;
         }
     }
