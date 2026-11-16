@@ -92,6 +92,12 @@ def make_icon(source: Path, target: Path) -> None:
         image = image.crop((0, 0, side, side)).resize((256, 256), Image.Resampling.LANCZOS)
         background = Image.new("RGB", image.size, (255, 255, 255))
         background.paste(image, mask=image.getchannel("A"))
+        # The source eyecatch is intentionally low-contrast artwork.  Horizon
+        # renders the home-menu icon small, where it reads as washed-out gray;
+        # restore a little colour/contrast for the 256px icon only.
+        from PIL import ImageEnhance
+        background = ImageEnhance.Color(background).enhance(1.35)
+        background = ImageEnhance.Contrast(background).enhance(1.15)
         background.save(target, "JPEG", quality=95, progressive=False, optimize=True)
     except ImportError:
         ffmpeg = locate_tool("ffmpeg.exe") or locate_tool("ffmpeg")
@@ -336,11 +342,13 @@ def main() -> int:
     ])
     patch_nacp_titles(control / "control.nacp", args.title)
 
-    icon_source = Path(args.icon_source) if args.icon_source else source / "image" / "xga" / "cg" / "eyecatch.png"
+    icon_source = Path(args.icon_source) if args.icon_source else source / "pc" / "uija" / "title" / "char.png"
+    if not icon_source.is_file():
+        icon_source = source / "image" / "xga" / "cg" / "eyecatch.png"
     if not icon_source.is_file():
         icon_source = source / "Cover.png"
     if not icon_source.is_file():
-        raise SystemExit("no icon source (Cover.png / image/xga/cg/eyecatch.png)")
+        raise SystemExit("no icon source (pc/uija/title/char.png / Cover.png / image/xga/cg/eyecatch.png)")
     make_icon(icon_source, control / "icon.jpg")
     shutil.copy2(control / "icon.jpg", control / "icon_AmericanEnglish.dat")
 
