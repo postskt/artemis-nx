@@ -377,6 +377,8 @@ int main(int argc, char** argv) {
         std::vector<nlohmann::json> history;
         std::string last_event_asset;
         bool gallery_dirty = false;
+        bool auto_mode = false;
+        Uint32 auto_deadline = 0;
         Uint32 brand_start = SDL_GetTicks();
         bool brand_voice_played = false;
         int brand_stage = -1;
@@ -437,6 +439,11 @@ int main(int argc, char** argv) {
             constexpr std::size_t kHistoryLimit = 64;
             if (history.size() > kHistoryLimit) history.erase(history.begin());
         };
+        auto auto_save = [&] {
+            // Slot 0 is intentionally invisible in the load grid; it is the
+            // rolling resume point used by CONTINUE and AUTOLOAD.
+            saves.save(0, engine.export_state());
+        };
         auto advance_text = [&] {
             const std::string& text = engine.snapshot().text;
             const std::size_t total = utf8_length(text);
@@ -448,6 +455,7 @@ int main(int argc, char** argv) {
             remember_state();
             engine.step(artc::Action::Next);
             audio.play(engine.consume_audio());
+            auto_save();
         };
         auto restore_history = [&] {
             if (history.empty()) return;
@@ -498,7 +506,11 @@ int main(int argc, char** argv) {
             history.clear();
             last_event_asset.clear();
             reset_text_reveal();
+            auto_mode = false;
+            auto_deadline = 0;
             screen = Screen::Game;
+            screen_changed_ms = SDL_GetTicks();
+            renderer.set_fade(1.0f);
         };
         auto load_slot = [&](int slot) -> bool {
             auto state = saves.load(slot);
@@ -513,7 +525,11 @@ int main(int argc, char** argv) {
             history.clear();
             last_event_asset = engine.snapshot().background;
             reset_text_reveal();
+            auto_mode = false;
+            auto_deadline = 0;
             screen = Screen::Game;
+            screen_changed_ms = SDL_GetTicks();
+            renderer.set_fade(1.0f);
             return true;
         };
         auto capture_for_save = [&] {
@@ -599,7 +615,7 @@ int main(int argc, char** argv) {
                 start_new_game();
             } else if (index == 1) {
                 const int latest = saves.latest_slot();
-                if (latest == 0 || !load_slot(latest)) start_new_game();
+                if (latest < 0 || !load_slot(latest)) start_new_game();
             } else if (index == 2) {
                 open_load_menu(Screen::Title);
             } else if (index == 3) {
@@ -775,6 +791,9 @@ int main(int argc, char** argv) {
                                 engine.step(artc::Action::ToggleUi);
                             } else if (hit == 8) {
                                 restore_history();
+                            } else if (hit == 4) {
+                                auto_mode = !auto_mode;
+                                auto_deadline = 0;
                             } else if (hit == 6) {
                                 engine.step(artc::Action::Skip);
                                 play_audio();
@@ -1110,7 +1129,7 @@ int main(int argc, char** argv) {
             }
             {
                 const float age = static_cast<float>(SDL_GetTicks() - screen_changed_ms);
-                renderer.set_fade(std::max(0.0f, 1.0f - age / 220.0f));
+                renderer.set_fade(std::max(0.0f, 1.0f - age / 700.0f));
             }
 
             if (screen == Screen::Brand) {
@@ -1182,6 +1201,18 @@ int main(int argc, char** argv) {
                     }
                 }
                 renderer.set_text_reveal(reveal_chars);
+                if (auto_mode && !text.empty() && reveal_chars >= total_chars) {
+                    const Uint32 now = SDL_GetTicks();
+                    if (auto_deadline == 0) {
+                        auto_deadline = now + static_cast<Uint32>(
+                            1800.0f / std::max(0.5f, settings.auto_speed));
+                    } else if (now >= auto_deadline) {
+                        advance_text();
+                        auto_deadline = 0;
+                    }
+                } else {
+                    auto_deadline = 0;
+                }
                 audio.update();
                 renderer.draw(engine.snapshot());
                 renderer.present();

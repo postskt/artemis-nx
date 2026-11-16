@@ -46,7 +46,9 @@ SaveManager::SaveManager(std::filesystem::path directory)
 }
 
 bool SaveManager::valid_slot(int slot) {
-    return slot >= 1 && slot <= kSlotCount;
+    // Slot 0 is the invisible rolling autosave.  The twelve manual slots are
+    // still the only ones exposed by list().
+    return slot >= 0 && slot <= kSlotCount;
 }
 
 std::filesystem::path SaveManager::json_path(int slot) const {
@@ -116,7 +118,7 @@ bool SaveManager::erase(int slot) {
 int SaveManager::latest_slot() const {
     int latest = 0;
     std::filesystem::file_time_type latest_time{};
-    for (int slot = 1; slot <= kSlotCount; ++slot) {
+    for (int slot = 0; slot <= kSlotCount; ++slot) {
         std::error_code ec;
         if (!std::filesystem::is_regular_file(json_path(slot), ec)) continue;
         const auto time = std::filesystem::last_write_time(json_path(slot), ec);
