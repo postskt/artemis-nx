@@ -1,7 +1,9 @@
-# Artemis NX
+# Artemis NX · Artemis 引擎兼容运行时（Nintendo Switch 移植版）
 
 A portable C++17 runtime for **Artemis Engine**-format visual novels, with a
 pure-core engine and SDL2 desktop/Switch presentation layers.
+
+**Artemis 引擎**格式视觉小说的便携式 C++17 运行时：纯内核引擎 + SDL2 桌面 / Switch 表现层。
 
 This repository contains **engine and tooling source only**. It does not
 contain any commercial game assets, scripts, audio, fonts, encryption keys or
