@@ -5,9 +5,42 @@ pure-core engine and SDL2 desktop/Switch presentation layers.
 
 **Artemis 引擎**格式视觉小说的便携式 C++17 运行时：纯内核引擎 + SDL2 桌面 / Switch 表现层。
 
+[![Build Nintendo Switch](https://github.com/postskt/artemis-nx/actions/workflows/switch_build.yml/badge.svg)](https://github.com/postskt/artemis-nx/actions/workflows/switch_build.yml)
+[![Download latest](https://img.shields.io/badge/⬇️_下载最新版-Releases-e60012?logo=nintendo3ds&logoColor=white)](https://github.com/postskt/artemis-nx/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+
 This repository contains **engine and tooling source only**. It does not
 contain any commercial game assets, scripts, audio, fonts, encryption keys or
 NSP/NRO files. To use it, provide your own legally obtained game data.
+
+## 🔎 上游与出处 | Provenance
+
+**中文**：Artemis Engine 是**闭源商业视觉小说引擎**（ATRI、NUKITASHI 等作品使用）。本项目并非其官方分支，而是面向该引擎**数据格式**（`.ast` Lua 表脚本、pf6/pf8 档案、Iten sprite 格式）的**独立开源重实现**，格式行为参考社区逆向研究成果。
+
+**English**: Artemis Engine itself is a closed-source commercial engine. This project is an independent open-source reimplementation targeting its data formats — not an official fork of, nor affiliated with, the original engine.
+
+## 🧭 工作流程 | Build Workflow
+
+```text
+源码（C++17 纯内核 + SDL2 平台层）
+   │  devkitA64 容器（GitHub Actions）
+   │  cmake -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/Switch.cmake
+   │  -DARTC_BUILD_SMOKE=OFF -DARTC_BUILD_PLATFORM=ON
+   ▼
+aarch64 交叉编译（libnx + switch-sdl2/sdl2_image/sdl2_mixer/sdl2_ttf 端口库）
+   ▼
+elf2nro → artemis_runner.nro（CI 自动上传 artifact；打 v* 标签自动发 Release）
+```
+
+NSP 打包（elf2nso / npdm / hacpack）详见 [docs/SWITCH_NSP_PACKAGING.md](docs/SWITCH_NSP_PACKAGING.md)。
+
+## ⬇️ 一键下载 | One-click Download
+
+打上 `v*` 标签后 CI 自动发布 Release；[releases/latest](https://github.com/postskt/artemis-nx/releases/latest) 直链永远指向最新版本（含 `artemis_runner.nro`）。**本项目不分发任何游戏资源**。
+
+## 📄 许可 | License
+
+本项目代码以 [MIT](LICENSE) 许可发布。"Artemis Engine" 名称归其权利方所有，本项目与其无隶属关系。
 
 ## Packaging notes
 
